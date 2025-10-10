@@ -14,27 +14,43 @@ if (!admin.apps.length) {
   });
 }
 
-// Fungsi untuk memproses data mentah dari Firebase
+// Ganti fungsi lama dengan fungsi baru ini di dalam netlify/functions/trash-data.js
+
 function transformFirebaseData(firebaseData, device) {
     if (!firebaseData || !firebaseData.data) {
+        console.warn('Tidak ada data yang ditemukan di Firebase untuk device:', device);
         return [];
     }
+
     const result = [];
-    // Loop melalui data history di Firebase
-    Object.entries(firebaseData.data).forEach(([timestampKey, value]) => {
-        const dataPoint = {
-            timestamp: value.timestamp || new Date(parseInt(timestampKey)).toISOString(),
-            distance: parseFloat(value.distance) || 0,
-            status: value.status || 'UNKNOWN',
-            batteryVoltage: parseFloat(value.batteryVoltage) || 0,
-            device: device
-        };
-        result.push(dataPoint);
+
+    // Loop Level 1: Timestamp
+    Object.values(firebaseData.data).forEach(level1 => {
+        if (level1 && typeof level1 === 'object') {
+            // Loop Level 2: Unique Key (millis)
+            Object.values(level1).forEach(level2 => {
+                if (level2 && typeof level2 === 'object') {
+                    // Loop Level 3: Random ID
+                    Object.values(level2).forEach(sensorData => {
+                        if (sensorData && typeof sensorData === 'object') {
+                            const dataPoint = {
+                                timestamp: sensorData.timestamp || 'N/A',
+                                distance: parseFloat(sensorData.distance) || 0,
+                                status: sensorData.status || 'UNKNOWN',
+                                batteryVoltage: parseFloat(sensorData.batteryVoltage) || 0,
+                                device: device
+                            };
+                            result.push(dataPoint);
+                        }
+                    });
+                }
+            });
+        }
     });
+
     // Urutkan dari yang paling baru
     return result.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
-
 
 exports.handler = async function(event) {
   const { device = 'device1' } = event.queryStringParameters;
