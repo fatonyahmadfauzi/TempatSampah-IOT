@@ -15,15 +15,15 @@ document.addEventListener('DOMContentLoaded', async function() {
     if (username === env.ADMIN_USERNAME && password === env.ADMIN_PASSWORD) {
       localStorage.setItem('userRole', 'admin');
       localStorage.setItem('username', username);
-      window.location.href = 'device-1.html';
+      window.location.href = '/device-1';
     } else if (username === env.USER1_USERNAME && password === env.USER1_PASSWORD) {
       localStorage.setItem('userRole', 'user1');
       localStorage.setItem('username', username);
-      window.location.href = 'device-1.html';
+      window.location.href = '/device-1';
     } else if (username === env.USER2_USERNAME && password === env.USER2_PASSWORD) {
       localStorage.setItem('userRole', 'user2');
       localStorage.setItem('username', username);
-      window.location.href = 'device-2.html';
+      window.location.href = '/device-2';
     } else {
       document.getElementById('toastMessage').textContent = 'Username atau password salah!';
       toast.show();

@@ -7,7 +7,7 @@ export async function checkAuth() {
   
   // Jika tidak ada role atau username (belum login), redirect ke login
   if (!userRole || !username) {
-    window.location.href = 'login.html';
+    window.location.href = '/login';
     return false;
   }
   
@@ -21,7 +21,7 @@ export async function checkAuth() {
   if (validCombinations[username] !== userRole) {
     localStorage.removeItem('userRole');
     localStorage.removeItem('username');
-    window.location.href = 'login.html';
+    window.location.href = '/login';
     return false;
   }
   
@@ -63,6 +63,6 @@ export function setupAuthUI() {
   logoutBtn.addEventListener('click', function() {
     localStorage.removeItem('userRole');
     localStorage.removeItem('username');
-    window.location.href = 'login.html';
+    window.location.href = '/login';
   });
 }
