@@ -468,41 +468,43 @@ async function sendTelegramNotification(message, device = ACTIVE_DEVICE) {
   }
 }
 
-// Modifikasi fungsi fetchData untuk mengirim notifikasi
+// Di dalam public/js/script.js
+
 async function fetchData() {
   try {
     showLoading(true);
-    // SEBELUMNYA:
-    // const response = await fetch(`${API_BASE_URL}/api/trash-data?device=${ACTIVE_DEVICE}`);
-
-    // SESUDAH:
     const response = await fetch(`/api/trash-data?device=${ACTIVE_DEVICE}`);
-    
+
+    // Jika respons TIDAK ok (seperti 404, 502, dll.)
     if (!response.ok) {
+      // Lemparkan error dengan status dari server
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
     const result = await response.json();
-    console.log('API Response:', result);
-    
+
     if (result?.success) {
-      allData = processData(result.data);
-      if (allData.length === 0) {
-        console.warn('Received empty data array from API');
-        allData = generateFallbackData(ACTIVE_DEVICE);
+      // Cek jika data yang diterima adalah array dan tidak kosong
+      if (Array.isArray(result.data) && result.data.length > 0) {
+        allData = result.data; // Gunakan data langsung karena sudah diproses di backend
+      } else {
+        // Handle jika data kosong dari API
+        console.warn('API returned empty or invalid data');
+        allData = []; // Tampilkan tabel kosong
       }
     } else {
-      console.error('API Error:', result.error);
-      allData = generateFallbackData(ACTIVE_DEVICE);
+      // Handle jika API mengembalikan success: false
+      throw new Error(result.error || 'API returned an error');
     }
-    
-    filterData();
+
   } catch (error) {
+    // BLOK CATCH YANG DIPERBAIKI
     console.error('Fetch error:', error);
-    showAlert('Failed to fetch data. Using fallback data.', 'warning');
-    allData = generateFallbackData(ACTIVE_DEVICE);
-    filterData();
+    showAlert(`Gagal memuat data dari server: ${error.message}`, 'danger');
+    allData = []; // Tampilkan tabel kosong, BUKAN data acak
   } finally {
+    // Apapun yang terjadi, jalankan ini
+    filterData(); // Ini akan me-render tabel (meskipun kosong)
     showLoading(false);
   }
 }

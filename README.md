@@ -88,19 +88,22 @@ Sistem monitoring tempat sampah pintar berbasis IoT yang memantau tingkat pengis
 
     ```bash
     smart-trash-monitoring/
-    ├── Arduino IDE/             # Kode untuk perangkat IoT
-    │ ├── Device-1.ino           # Kode untuk perangkat 1
-    │ └── Device-2.ino           # Kode untuk perangkat 2
-    ├── public/                  # File frontend
-    │ ├── assets/                # Gambar dan logo
-    │ ├── css/                   # Stylesheet
-    │ ├── js/                    # JavaScript
-    │ ├── device-1.html          # Halaman device 1
-    │ ├── device-2.html          # Halaman device 2
-    │ └── login.html             # Halaman login
-    ├── server.js                # Backend server
-    ├── package.json             # Dependencies Node.js
-    └── service-account-key.json # Kredensial Firebase
+    ├── Arduino IDE/    # Kode untuk perangkat IoT
+    ├── netlify/
+    │ └── functions/    # Backend Serverless Functions
+    │ ├── env-config.js
+    │ └── trash-data.js
+    │ └── ...
+    ├── public/         # File frontend (situs statis)
+    │ ├── assets/
+    │ ├── css/
+    │ ├── js/
+    │ ├── device-1.html
+    │ ├── device-2.html
+    │ └── login.html
+    ├── netlify.toml    # Konfigurasi untuk Netlify
+    ├── package.json    # Dependencies Node.js
+    └── .gitignore      # Mengabaikan file sensitif
     ```
 
 ## 🔌 Hardware Requirements
@@ -115,9 +118,9 @@ Sistem monitoring tempat sampah pintar berbasis IoT yang memantau tingkat pengis
 
     ```bash
     [ESP32 Device] --(WiFi)--> [Firebase Realtime Database]
-                               ↑
-                               |
-    [Web Browser] <--(HTTP)--> [Node.js Server on Render]
+                                  ↑
+                                  |
+    [Web Browser] <--(HTTP)--> [Netlify (CDN + Functions)]
     ↓
     [Telegram/Discord] <--(API)---+
     ```
