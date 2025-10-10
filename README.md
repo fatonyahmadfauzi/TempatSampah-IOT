@@ -30,72 +30,43 @@ Sistem monitoring tempat sampah pintar berbasis IoT yang memantau tingkat pengis
   - Sistem login dengan 3 level akses (admin, user1, user2)
   - Proteksi endpoint API
 
-## 🚀 Deployment ke Render
+## 🚀 Deployment ke Netlify
 
 **Prasyarat**
 
-1. Akun [Render](https://render.com/)
-2. Firebase project dengan Realtime Database
-3. Bot Telegram dan channel Discord (opsional)
+1.  Akun [Netlify](https://www.netlify.com/)
+2.  Firebase project dengan Realtime Database & Kunci Service Account (file JSON).
+3.  Bot Telegram dan channel Discord (opsional).
 
 **Langkah-langkah Deployment**
 
-1.  **Persiapan Environment Variables**:
-    Buat file `.env` di root project dengan konten berikut:
+1.  **Unggah Proyek ke GitHub**:
+    Pastikan semua file, termasuk folder `netlify` dan file `netlify.toml`, sudah ada di repositori GitHub Anda.
 
-    ```env
-    # Firebase Configuration
-    FIREBASE_URL=https://[YOUR-FIREBASE-PROJECT].firebaseio.com
-    FIREBASE_AUTH_TOKEN=[YOUR-FIREBASE-SECRET]
+2.  **Deploy di Netlify**:
 
-    # Telegram Configuration
-    TELEGRAM_BOT_TOKEN=[BOT-TOKEN-DEVICE1]
-    TELEGRAM_CHAT_ID=[CHAT-ID1,CHAT-ID2]
-    TELEGRAM_BOT_TOKEN_DEVICE2=[BOT-TOKEN-DEVICE2]
-    TELEGRAM_CHAT_ID_DEVICE2=[CHAT-ID3]
+    - Dari dashboard Netlify, pilih "Add new site" -> "Import an existing project".
+    - Hubungkan ke repositori GitHub Anda.
+    - Pengaturan build akan terdeteksi otomatis dari `netlify.toml`. Cukup konfirmasi dan lanjutkan.
 
-    # Discord Configuration
-    DISCORD_BOT_TOKEN=[YOUR-DISCORD-BOT-TOKEN]
-    DISCORD_CHANNEL_ID_DEVICE1=[CHANNEL-ID-DEVICE1]
-    DISCORD_CHANNEL_ID_DEVICE2=[CHANNEL-ID-DEVICE2]
+3.  **Konfigurasi Environment Variables**:
 
-    # Authentication
-    ADMIN_USERNAME=admin
-    ADMIN_PASSWORD=admin123
-    USER1_USERNAME=user1
-    USER1_PASSWORD=user1pass
-    USER2_USERNAME=user2
-    USER2_PASSWORD=user2pass
+    - Buka **Site settings > Build & deploy > Environment**.
+    - Tambahkan semua variabel yang Anda butuhkan (dari file `.env` lokal Anda), seperti `TELEGRAM_BOT_TOKEN`, `ADMIN_USERNAME`, dll.
+    - **Penting untuk Firebase**: Tambahkan variabel dari file `service-account-key.json` Anda:
+      - `FIREBASE_URL`: URL database Firebase Anda.
+      - `FIREBASE_PROJECT_ID`: `project_id` dari file JSON.
+      - `FIREBASE_CLIENT_EMAIL`: `client_email` dari file JSON.
+      - `FIREBASE_PRIVATE_KEY`: Salin seluruh isi `private_key` dari file JSON (termasuk `-----BEGIN PRIVATE KEY-----` dan `-----END PRIVATE KEY-----`), lalu tempelkan sebagai satu baris teks.
 
-    PORT=3000
-    ```
+4.  **Trigger Deploy**:
+    Setelah semua variabel disimpan, pergi ke tab "Deploys" dan trigger deploy ulang agar Netlify menggunakan variabel lingkungan yang baru.
 
-2.  **Deploy ke Render**:
+5.  **Konfigurasi ESP32**:
 
-    - Buat new Web Service di Render
-    - Connect ke repository GitHub Anda
-    - Gunakan konfigurasi berikut:
-      - **Runtime**: Node
-      - **Build Command**: `npm install`
-      - **Start Command**: `node server.js`
-      - **Environment Variables**: Salin semua dari file `.env`
+    - Kode pada perangkat ESP32 tidak perlu diubah. Variabel `firebaseHost` tetap mengarah langsung ke URL Firebase, bukan ke URL Netlify.
 
-3.  **Konfigurasi Webhook**:
-    Setelah deploy selesai, dapatkan URL dari Render (format: `https://[nama-service].onrender.com`) dan update di file `script.js` dengan:
-
-    ```javascript
-    const API_BASE_URL = "https://[nama-service].onrender.com";
-    ```
-
-4.  **Konfigurasi ESP32**:
-
-    - Biarkan `firebaseHost` mengarah langsung ke Firebase:
-      ```cpp
-      const char *firebaseHost = "https://[PROJECT-ID].firebasedatabase.app/";
-      ```
-    - Tidak perlu diubah ke URL Render
-
-5.  Konfigurasi Firebase Rules:
+6.  Konfigurasi Firebase Rules:
     Pastikan Firebase Realtime Database memiliki rules berikut:
     ```json
     {
@@ -113,7 +84,7 @@ Sistem monitoring tempat sampah pintar berbasis IoT yang memantau tingkat pengis
       }
     }
     ```
-6.  🏗️ Struktur Proyek
+7.  🏗️ Struktur Proyek
 
     ```bash
     smart-trash-monitoring/
