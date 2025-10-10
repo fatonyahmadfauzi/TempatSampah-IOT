@@ -1,6 +1,6 @@
 export async function loadEnv() {
   try {
-    const response = await fetch('/env-config');
+    const response = await fetch('/api/env-config');
     if (!response.ok) {
       throw new Error('Failed to load environment config');
     }
