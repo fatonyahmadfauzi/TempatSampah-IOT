@@ -1,7 +1,19 @@
-// ... (Salin bagian inisialisasi Firebase dari contoh di atas) ...
+// Lokasi: netlify/functions/set-pause-status.js
+const admin = require('firebase-admin');
 
-// Fungsi handler utama
-exports.handler = async function(event, context) {
+// BLOK INISIALISASI FIREBASE (WAJIB ADA)
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: (process.env.FIREBASE_PRIVATE_KEY || '').replace(/\\n/g, '\n'),
+    }),
+    databaseURL: process.env.FIREBASE_URL,
+  });
+}
+
+exports.handler = async function(event) {
   if (event.httpMethod !== 'POST') {
     return { statusCode: 405, body: 'Method Not Allowed' };
   }
@@ -13,11 +25,8 @@ exports.handler = async function(event, context) {
       return { statusCode: 400, body: JSON.stringify({ success: false, error: 'Invalid request body' }) };
     }
 
-    await db.ref(`devices/${device}/control/pause`).set(pause);
-    
-    // Catatan: Mengirim notifikasi Telegram/Discord dari sini akan lebih kompleks
-    // karena Anda perlu membuat fungsi terpisah untuk itu dan memanggilnya.
-    
+    await admin.database().ref(`devices/${device}/control/pause`).set(pause);
+
     return {
       statusCode: 200,
       body: JSON.stringify({ success: true, pause })
