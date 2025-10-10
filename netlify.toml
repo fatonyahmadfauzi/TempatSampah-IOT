@@ -1,0 +1,11 @@
+# Konfigurasi build untuk saat deploy nanti
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+# Aturan ini akan secara otomatis meneruskan panggilan /api/ 
+# ke server functions yang dijalankan oleh Netlify Dev.
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200

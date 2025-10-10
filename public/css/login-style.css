@@ -1,0 +1,97 @@
+/* Tema Smart Trash - Hijau Ekologi */
+body {
+  background: linear-gradient(135deg, #2E7D32, #1B5E20);
+  height: 100vh;
+  display: flex;
+  align-items: center;
+}
+
+.login-card {
+  background: rgba(255, 255, 255, 0.97);
+  border-radius: 15px;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+}
+
+.login-image {
+  background: url('../assets/logo-login.jpg') center/cover;
+  height: 100%;
+  min-height: 300px;
+  filter: brightness(0.9);
+}
+
+.form-control:focus {
+  border-color: #00C853;
+  box-shadow: 0 0 0 0.25rem rgba(0, 200, 83, 0.25);
+}
+
+.btn-login {
+  background: linear-gradient(to right, #00C853, #009688);
+  border: none;
+  transition: all 0.3s;
+  color: white;
+}
+
+.btn-login:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+  background: linear-gradient(to right, #009688, #00C853);
+}
+
+/* Animasi Toast */
+@keyframes slideIn {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+
+.toast {
+  animation: slideIn 0.3s ease-out;
+  border: 1px solid #2E7D32;
+}
+
+/* Mobile Logo Styles */
+.mobile-logo {
+  max-height: 80px;
+  border-radius: 5px;
+  margin: 0 auto;
+  display: block;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 767.98px) {
+  .login-card {
+    margin-top: 2rem;
+    margin-bottom: 2rem;
+  }
+  
+  .login-image {
+    display: none;
+  }
+  
+  .card-body {
+    padding: 2rem !important;
+  }
+  
+  .mobile-logo {
+    margin-bottom: 1.5rem;
+  }
+}
+
+@media (max-width: 575.98px) {
+  .login-card {
+    border-radius: 10px;
+  }
+  
+  .card-body {
+    padding: 1.5rem !important;
+  }
+  
+  h2 {
+    font-size: 1.5rem;
+  }
+  
+  .mobile-logo {
+    max-height: 70px;
+  }
+}

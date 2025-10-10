@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Smart Trash Monitoring</title>
+    <!-- Bootstrap CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Bootstrap Icons -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.0/font/bootstrap-icons.css">
+    <!-- Flatpickr for datepicker -->
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <script type="module">
+        import { checkAuth, setupAuthUI } from './js/auth-check.js';
+        
+        document.addEventListener('DOMContentLoaded', async function() {
+            const isAuthenticated = await checkAuth();
+            if (isAuthenticated) {
+            setupAuthUI();
+            }
+        });
+    </script>
+    <!-- Tambahkan navbar di bagian atas -->
+    <nav class="navbar navbar-expand-md d-md-none fixed-top bg-white shadow-sm">
+        <div class="container-fluid">
+            <button class="navbar-toggler" id="sidebarToggle" type="button" aria-label="Toggle navigation" aria-expanded="false">
+                <i class="bi bi-list" aria-hidden="true"></i>
+                <span class="visually-hidden">Toggle sidebar menu</span>
+            </button>
+            <span class="navbar-brand ms-3">MENU</span>
+        </div>
+    </nav>
+
+    <div class="d-flex">
+    <!-- Sidebar -->
+    <nav id="sidebar">
+        <div class="sidebar-inner d-flex flex-column">
+        <div class="text-center my-4">
+            <strong>👤 Admin</strong>
+        </div>
+        <ul class="nav flex-column mb-4 px-2">
+            <li class="nav-item">
+            <a class="nav-link device-link" href="device-1.html">📟 Device 1</a>
+            </li>
+            <li class="nav-item">
+            <a class="nav-link device-link" href="device-2.html">📟 Device 2</a>
+            </li>
+        </ul>
+        <div class="mt-auto text-center p-3">
+            <button class="btn btn-outline-danger w-100">🚪 Logout</button>
+        </div>
+        </div>
+    </nav>
+
+  <!-- Main Content -->
+  <div class="flex-grow-1 p-3 mt-4" id="main-content">
+
+    <div class="container-fluid py-4">
+        <!-- Logo dan Judul -->
+        <div class="text-center mb-4">
+            <img src="assets/logo1.jpg" alt="Smart Trash Logo" class="img-fluid trash-logo">
+            <h2 class="mt-2 fw-bold">DEVICE 1 - TEMPAT SAMPAH PINTAR KU</h2>
+        </div>
+
+        <!-- Summary Cards -->
+        <div class="row mb-4">
+            <div class="col-md-4 mb-3">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>Current Status</span>
+                        <span id="current-status-badge" class="status-badge status-KOSONG">KOSONG</span>
+                    </div>
+                    <div class="card-body">
+                        <h5 class="card-title" id="current-distance">0 cm</h5>
+                        <div class="progress mt-3">
+                            <div id="fill-progress" class="progress-bar bg-success" role="progressbar" aria-label="Fill Level" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100"></div>
+                        </div>
+                        <p class="mt-2 mb-0 text-muted"><small>Last updated: <span id="last-update">-</span></small></p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card h-100">
+                    <div class="card-header">Statistics</div>
+                    <div class="card-body">
+                        <div class="row">
+                            <div class="col-6">
+                                <div class="d-flex flex-column">
+                                    <span class="text-muted small">Today's Records</span>
+                                    <span class="h4" id="today-count">0</span>
+                                </div>
+                            </div>
+                            <div class="col-6">
+                                <div class="d-flex flex-column">
+                                    <span class="text-muted small">Last Status</span>
+                                    <span class="h4" id="last-status">-</span>
+                                </div>
+                            </div>
+                        </div>
+                        <hr>
+                        <div id="status-distribution" class="small">
+                            <!-- Will be filled by JS -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-4 mb-3">
+                <div class="card h-100">
+                    <div class="card-header">Fill Level History</div>
+                    <div class="card-body">
+                        <div id="chart-container">
+                            <canvas id="fill-chart"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Battery & Power Card -->
+            <div class="col-md-3 mb-3">
+                <div class="card h-100">
+                    <div class="card-header">Battery & Power</div>
+                    <div class="card-body text-center">
+                        <div class="mb-2">
+                            <i id="battery-status" class="bi bi-battery-full fs-1 text-success"></i>
+                        </div>
+                        <h3 id="battery-voltage">0.00V</h3>
+                        <p class="text-muted small mb-1">Power: <span id="power-source">-</span></p>
+                        <p class="text-muted small mb-0" id="battery-last-reading">Last reading: -</p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Device Info Card -->
+            <div class="col-md-3 mb-3">
+                <div class="card h-100">
+                    <div class="card-header">Device Info</div>
+                    <div class="card-body text-center">
+                        <div class="mb-2">
+                            <i id="device-icon" class="bi bi-cpu fs-1 text-primary"></i>
+                        </div>
+                        <h3 id="device-id">-</h3>
+                        <p class="text-muted small mb-0">Status: <span id="device-status">-</span></p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Telegram User Info -->
+            <div class="col-md-6 mb-3">
+                <div class="card h-100">
+                    <div class="card-header">Telegram User Status</div>
+                    <div class="card-body">
+                    <div id="telegram-users" class="d-flex flex-column gap-3">
+                        <!-- Akan diisi dengan JS -->
+                    </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Pause / Resume Control -->
+            <div class="row mb-4">
+                <div class="col text-center d-flex flex-md-row flex-column gap-3 justify-content-center">
+                    <!-- Tombol Pause -->
+                    <button id="pauseBtn" class="btn btn-danger btn-lg">
+                        <i class="bi bi-pause-circle"></i> Pause Data
+                    </button>
+                    <!-- Tombol Resume -->
+                    <button id="resumeBtn" class="btn btn-success btn-lg">
+                        <i class="bi bi-play-circle"></i> Resume Data
+                    </button>
+                </div>
+            </div>
+
+            <!-- Filter Section -->
+            <div class="row-md-3 mb-3">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">Filter Data</div>
+                        <div class="card-body">
+                            <form id="filter-form" class="row g-3">
+                                <div class="col-md-3">
+                                    <label for="date-range" class="form-label">Date Range</label>
+                                    <input type="text" class="form-control" id="date-range" placeholder="Select date range">
+                                </div>
+                                <div class="col-md-2">
+                                    <label for="status-filter" class="form-label">Status</label>
+                                    <select id="status-filter" class="form-select">
+                                        <option value="">All Status</option>
+                                        <option value="KOSONG">KOSONG</option>
+                                        <option value="SEDANG">SEDANG</option>
+                                        <option value="PENUH">PENUH</option>
+                                    </select>
+                                </div>
+                                <div class="col-md-3">
+                                    <label for="search-input" class="form-label">Search</label>
+                                    <input type="text" class="form-control" id="search-input" placeholder="Search...">
+                                </div>
+                                <div class="col-md-2 d-flex align-items-end">
+                                    <button type="submit" class="btn btn-primary w-100">
+                                        <i class="bi bi-funnel"></i> Filter
+                                    </button>
+                                </div>
+                                <div class="col-md-2 d-flex align-items-end">
+                                    <button type="reset" class="btn btn-outline-secondary w-100">
+                                        <i class="bi bi-arrow-counterclockwise"></i> Reset
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Data Table -->
+            <div class="row-md-3">
+                <div class="col-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <div class="d-flex flex-column flex-md-row justify-content-between align-items-md-center gap-2">
+                                <span>Monitoring Data</span>
+                                <div class="d-flex action-buttons">
+                                    <button id="refresh-btn" class="btn btn-sm action-btn me-0">
+                                        <i class="bi bi-arrow-repeat"></i> Refresh
+                                    </button>
+                                    <button id="export-btn" class="btn btn-sm action-btn me-0">
+                                        <i class="bi bi-download"></i> Export
+                                    </button>
+                                    <button id="delete-all-btn" class="btn btn-sm action-btn">
+                                        <i class="bi bi-trash"></i> Hapus Database
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table id="data-table" class="table table-striped table-hover">
+                                    <thead>
+                                        <tr>
+                                            <th>Timestamp</th>
+                                            <th>Distance (cm)</th>
+                                            <th>Fill Level</th>
+                                            <th>Status</th>
+                                            <th>Battery</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Data will be loaded here -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            <nav aria-label="Table pagination">
+                                <ul class="pagination justify-content-center mt-3">
+                                    <li class="page-item disabled">
+                                        <a class="page-link" href="#" id="prev-page">Previous</a>
+                                    </li>
+                                    <li class="page-item active">
+                                        <a class="page-link" href="#" id="current-page">1</a>
+                                    </li>
+                                    <li class="page-item">
+                                        <a class="page-link" href="#" id="next-page">Next</a>
+                                    </li>
+                                </ul>
+                            </nav>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="container-fluid text-center mt-5">
+            <span class="fw-semibold text-dark">© <span id="currentYear"></span> fatonyahmadfauzi</span>
+        </div>
+    </div>
+
+    <!-- Tambahkan sebelum script.js -->
+    <script src="https://cdn.jsdelivr.net/npm/moment@2.29.4/moment.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/moment-timezone@0.5.43/builds/moment-timezone-with-data.min.js"></script>
+    <!-- Bootstrap JS Bundle with Popper -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <!-- Chart.js -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- Flatpickr -->
+    <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
+    <!-- Custom JS -->
+    <script src="js/script.js"></script>
+</body>
+</html>

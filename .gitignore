@@ -1,0 +1,36 @@
+# Node.js
+node_modules/
+.env
+package-lock.json
+
+# Firebase key (jangan unggah kunci ke Git)
+service-account-key.json
+
+# Editor
+.vscode/
+.idea/
+
+# Log dan cache
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Build artifacts (kalau pakai)
+dist/
+build/
+
+# Sistem OS
+.DS_Store
+Thumbs.db
+
+# Netlify deploy (jika ada)
+.netlify/
+
+# Backup
+*.bak
+*.tmp
+
+# Optional: jika kamu pindah ke config.json, jangan abaikan file ini
+!config.json
+
