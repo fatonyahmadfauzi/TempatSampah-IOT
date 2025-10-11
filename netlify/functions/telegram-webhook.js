@@ -14,7 +14,7 @@ if (!admin.apps.length) {
   });
 }
 
-// Fungsi untuk mengirim balasan ke Telegram
+// Fungsi untuk mengirim balasan PRIBADI ke pengguna
 async function sendTelegramReply(chatId, text, botToken) {
   const url = `https://api.telegram.org/bot${botToken}/sendMessage`;
   try {
@@ -28,36 +28,30 @@ async function sendTelegramReply(chatId, text, botToken) {
   }
 }
 
-// Fungsi untuk memeriksa status online perangkat
+// Fungsi untuk memeriksa status online perangkat (tetap sama)
 async function isDeviceOnline(deviceId) {
   try {
-    // Mencari data terakhir berdasarkan timestamp
-    const snapshot = await admin.database().ref(`devices/${deviceId}/data`).orderByChild('timestamp').limitToLast(1).once('value');
+    const snapshot = await admin.database().ref(`devices/${deviceId}/data`).orderByKey().limitToLast(1).once('value');
     const data = snapshot.val();
+    if (!data) return false;
 
-    if (!data) {
-        // Jika tidak ada data sama sekali, anggap offline
-        return false;
-    }
-    
-    // Ambil timestamp dari data terakhir
+    // Menyesuaikan dengan struktur baru yang lebih dalam
     const dateKey = Object.keys(data)[0];
-    const timeKey = Object.keys(data[dateKey])[0];
-    const lastDataEntry = data[dateKey][timeKey];
+    const uniqueKey = Object.keys(data[dateKey])[0];
+    const pushIdKey = Object.keys(data[dateKey][uniqueKey])[0];
+    const lastDataEntry = data[dateKey][uniqueKey][pushIdKey];
     const lastTimestamp = lastDataEntry.timestamp;
-    
+
     if (!lastTimestamp) return false;
 
     const lastDataTime = new Date(lastTimestamp).getTime();
     const now = new Date().getTime();
-    const timeDifference = (now - lastDataTime) / 1000; // Selisih dalam detik
+    const timeDifference = (now - lastDataTime) / 1000;
 
-    // Jika data terakhir lebih dari 2 menit (120 detik) yang lalu, anggap offline
-    return timeDifference <= 120;
-
+    return timeDifference <= 120; // Anggap offline jika lebih dari 2 menit
   } catch (error) {
     console.error(`Error checking device status for ${deviceId}:`, error);
-    return false; // Anggap offline jika terjadi error
+    return false;
   }
 }
 
@@ -76,24 +70,20 @@ exports.handler = async function(event) {
 
     const chatId = message.chat.id;
     const text = message.text.toLowerCase().trim();
-
     let command, deviceId, botToken;
 
-    // Menentukan perintah dan device ID dari teks
     if (text.startsWith('/pause') || text.startsWith('/resume')) {
         const match = text.match(/\/(pause|resume)(\d*)/);
         if (match) {
-            command = match[1]; // "pause" atau "resume"
-            const deviceNumber = match[2] || '1'; // default ke device 1 jika tidak ada angka
+            command = match[1];
+            const deviceNumber = match[2] || '1';
             deviceId = `device${deviceNumber}`;
             botToken = (deviceId === 'device2') ? process.env.TELEGRAM_BOT_TOKEN_DEVICE2 : process.env.TELEGRAM_BOT_TOKEN;
         }
     } else {
-        // Bukan perintah yang relevan, abaikan
         return { statusCode: 200, body: 'OK' };
     }
     
-    // --- PEMERIKSAAN STATUS OFFLINE ---
     const online = await isDeviceOnline(deviceId);
 
     if (!online) {
@@ -102,11 +92,13 @@ exports.handler = async function(event) {
       return { statusCode: 200, body: 'Device is offline, notification sent.' };
     }
     
-    // --- JIKA PERANGKAT ONLINE, LANJUTKAN PROSES ---
     const isPausing = (command === 'pause');
-    await admin.database().ref(`devices/${deviceId}/control/pause`).set(isPausing);
+    
+    // --- PERUBAHAN UTAMA: Menyimpan status pause di bawah ID pengguna ---
+    const firebasePath = `devices/${deviceId}/control/autoPausePerChat/${chatId}`;
+    await admin.database().ref(firebasePath).set(isPausing);
 
-    const successMessage = `✅ <b>Perintah Berhasil</b> ✅\n\nStatus pengiriman data untuk <b>${deviceId.toUpperCase()}</b> telah diatur ke: <b>${isPausing ? 'PAUSED' : 'RESUMED'}</b>.`;
+    const successMessage = `✅ <b>Notifikasi Pribadi Diubah</b> ✅\n\nNotifikasi untuk Anda dari <b>${deviceId.toUpperCase()}</b> telah diatur ke: <b>${isPausing ? 'PAUSED' : 'ACTIVE'}</b>.`;
     await sendTelegramReply(chatId, successMessage, botToken);
 
     return { statusCode: 200, body: 'Command processed successfully.' };

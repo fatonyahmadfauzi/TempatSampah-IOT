@@ -2,7 +2,7 @@
 
 const admin = require('firebase-admin');
 
-// Inisialisasi Firebase (pastikan environment variables sudah di-set di Netlify)
+// Inisialisasi Firebase
 if (!admin.apps.length) {
   admin.initializeApp({
     credential: admin.credential.cert({
@@ -14,40 +14,36 @@ if (!admin.apps.length) {
   });
 }
 
-// Ganti fungsi lama dengan fungsi baru ini di dalam netlify/functions/trash-data.js
-
+// Fungsi BARU untuk memproses data sesuai struktur Anda
 function transformFirebaseData(firebaseData, device) {
     if (!firebaseData || !firebaseData.data) {
-        console.warn('Tidak ada data yang ditemukan di Firebase untuk device:', device);
         return [];
     }
-
     const result = [];
 
-    // Loop Level 1: Timestamp
+    // Loop Level 1: Timestamp (Contoh: "2025-05-28T10:58:23Z")
     Object.values(firebaseData.data).forEach(level1 => {
         if (level1 && typeof level1 === 'object') {
-            // Loop Level 2: Unique Key (millis)
+            // Loop Level 2: Unique Key (Contoh: "14162")
             Object.values(level1).forEach(level2 => {
                 if (level2 && typeof level2 === 'object') {
-                    // Loop Level 3: Random ID
+                    // Loop Level 3: Push ID (Contoh: "-ORK1dD9cR-7QNU_KiTk")
                     Object.values(level2).forEach(sensorData => {
                         if (sensorData && typeof sensorData === 'object') {
-                            const dataPoint = {
+                            result.push({
                                 timestamp: sensorData.timestamp || 'N/A',
                                 distance: parseFloat(sensorData.distance) || 0,
                                 status: sensorData.status || 'UNKNOWN',
                                 batteryVoltage: parseFloat(sensorData.batteryVoltage) || 0,
                                 device: device
-                            };
-                            result.push(dataPoint);
+                            });
                         }
                     });
                 }
             });
         }
     });
-
+    
     // Urutkan dari yang paling baru
     return result.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
 }
@@ -59,8 +55,6 @@ exports.handler = async function(event) {
   try {
     const snapshot = await admin.database().ref(path).once('value');
     const rawData = snapshot.val();
-
-    // Proses data sebelum dikirim ke frontend
     const processedData = transformFirebaseData(rawData, device);
 
     return {
