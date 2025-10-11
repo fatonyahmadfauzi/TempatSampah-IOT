@@ -899,7 +899,8 @@ resumeBtn.addEventListener("click", async () => {
 
     // Kirim notifikasi ke Telegram & Discord
     const notificationMessage = `⚠️ **Peringatan Sistem** ⚠️\nAdmin mencoba me-resume perangkat ${deviceName} yang terdeteksi sedang offline.`;
-    sendTelegramNotification(notificationMessage.replace(/\*\*/g, '<b>'));
+    // Baris yang sudah diperbaiki
+    sendTelegramNotification(notificationMessage.replace(/\*\*/g, '<b>'), ACTIVE_DEVICE);
     sendDiscordNotification(notificationMessage);
 
     console.warn(offlineMessage);
