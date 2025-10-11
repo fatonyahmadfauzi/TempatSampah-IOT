@@ -881,34 +881,28 @@ pauseBtn.addEventListener("click", async () => {
 });
 
 // Pada resumeBtn
-// Ganti event listener untuk resumeBtn dengan yang ini
 resumeBtn.addEventListener("click", async () => {
-  // --- LOGIKA BARU UNTUK CEK STATUS OFFLINE ---
   const now = new Date();
-  // Pastikan latestRecord.timestamp ada, jika tidak, anggap sudah lama sekali
   const lastDataTime = new Date(latestRecord.timestamp || 0);
-  const timeDifference = (now.getTime() - lastDataTime.getTime()) / 1000; // Selisih dalam detik
+  const timeDifference = (now.getTime() - lastDataTime.getTime()) / 1000;
 
-  // Jika perangkat offline (data terakhir lebih dari 2 menit yang lalu)
   if (timeDifference > 120) {
     const deviceName = ACTIVE_DEVICE.toUpperCase();
     const offlineMessage = `⚠️ Perintah Gagal: Perangkat ${deviceName} sedang OFFLINE.`;
 
-    // Tampilkan peringatan di halaman web
     showAlert(offlineMessage, 'warning');
 
-    // Kirim notifikasi ke Telegram & Discord
     const notificationMessage = `⚠️ **Peringatan Sistem** ⚠️\nAdmin mencoba me-resume perangkat ${deviceName} yang terdeteksi sedang offline.`;
-    // Baris yang sudah diperbaiki
+    
+    // --- INI BAGIAN YANG DIPERBAIKI ---
     sendTelegramNotification(notificationMessage.replace(/\*\*/g, '<b>'), ACTIVE_DEVICE);
-    sendDiscordNotification(notificationMessage);
-
+    sendDiscordNotification(notificationMessage, ACTIVE_DEVICE);
+    
     console.warn(offlineMessage);
-    return; // Hentikan eksekusi
+    return;
   }
-  // --- AKHIR LOGIKA BARU ---
 
-  // Jika perangkat ONLINE, lanjutkan dengan proses resume yang sudah ada
+  // Logika resume jika perangkat online (tidak perlu diubah)
   try {
     showLoading(true);
     const res = await fetch(`/api/set-pause-status`, {
@@ -919,9 +913,9 @@ resumeBtn.addEventListener("click", async () => {
         device: ACTIVE_DEVICE 
       })
     });
-
+    
     const result = await res.json();
-
+    
     if (result.success) {
       showAlert(`Data dan notifikasi untuk ${ACTIVE_DEVICE} berhasil dilanjutkan`, "success");
       await checkPauseStatus();
