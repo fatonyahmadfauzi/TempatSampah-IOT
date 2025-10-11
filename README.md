@@ -106,25 +106,25 @@ An IoT-based smart trash monitoring system that tracks the fill level of trash c
 
 ## 🏗️ Project Structure
 
-`````bash
-smart-trash-monitoring/
-├── Arduino IDE/
-├── netlify/
-│   └── functions/
-│       ├── telegram-notify.js         # Sends general notifications
-│       ├── telegram-webhook-d1.js     # Receives commands for Bot 1
-│       ├── telegram-webhook-d2.js     # Receives commands for Bot 2
-│       ├── trash-data.js              # Data API for the web
-│       └── ...
-├── public/
-│   ├── assets/
-│   ├── css/
-│   ├── js/
-│   ├── device-1.html
-│   ├── device-2.html
-│   └── login.html
-├── netlify.toml
-└── package.json
+    ```bash
+    smart-trash-monitoring/
+    ├── Arduino IDE/
+    ├── netlify/
+    │   └── functions/
+    │       ├── telegram-notify.js         # Sends general notifications
+    │       ├── telegram-webhook-d1.js     # Receives commands for Bot 1
+    │       ├── telegram-webhook-d2.js     # Receives commands for Bot 2
+    │       ├── trash-data.js              # Data API for the web
+    │       └── ...
+    ├── public/
+    │   ├── assets/
+    │   ├── css/
+    │   ├── js/
+    │   ├── device-1.html
+    │   ├── device-2.html
+    │   └── login.html
+    ├── netlify.toml
+    └── package.json
     ```
 
 ## 🔌 Hardware Requirements
@@ -137,15 +137,15 @@ smart-trash-monitoring/
 
 ## 📊 Architecture Diagram
 
-````bash
-[ESP32 Device 1 & 2] ----(WiFi)----> [Firebase Realtime DB]
-                                         ^
-                                         | (Read/Write Data)
-                                         v
-[Web Browser] <----(HTTPS)----> [Netlify: CDN + Functions] <----(Webhook)---- [Telegram Bot 1 & 2]
-   (API Call)                           ^         |                        (API Reply)
-                                        |         | (API Call)
-                                        +---------+------> [Discord]
+    ```bash
+    [ESP32 Device 1 & 2] ----(WiFi)----> [Firebase Realtime DB]
+                                            ^
+                                            | (Read/Write Data)
+                                            v
+    [Web Browser] <----(HTTPS)----> [Netlify: CDN + Functions] <----(Webhook)---- [Telegram Bot 1 & 2]
+      (API Call)                           ^         |                        (API Reply)
+                                            |         | (API Call)
+                                            +---------+------> [Discord]
     ```
 
 ## 🧑‍💻 Usage
@@ -180,6 +180,6 @@ This project is licensed under the MIT License - see the [LICENSE]() file for de
 ## ✉️ Contact
 
 Fatony Ahmad Fauzi
+
 - Email: fatonyahmadfauzi@gmail.com
 - Telegram: @fatonyahmadfauzi
-`````
