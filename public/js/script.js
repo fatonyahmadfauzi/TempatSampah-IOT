@@ -880,7 +880,8 @@ pauseBtn.addEventListener("click", async () => {
   }
 });
 
-// Pada resumeBtn
+// Ganti event listener yang lama dengan yang ini di public/js/script.js
+
 resumeBtn.addEventListener("click", async () => {
   const now = new Date();
   const lastDataTime = new Date(latestRecord.timestamp || 0);
@@ -892,11 +893,9 @@ resumeBtn.addEventListener("click", async () => {
 
     showAlert(offlineMessage, 'warning');
 
-    // --- BAGIAN YANG DIPERBAIKI ---
-    // Mengganti emoji ⚠️ dengan ❗️
     const notificationMessage = `❗️ **Peringatan Sistem** ❗️\nAdmin mencoba me-resume perangkat ${deviceName} yang terdeteksi sedang offline.`;
     
-    // Memastikan kedua fungsi notifikasi dipanggil dengan DUA argumen
+    // Memastikan kedua fungsi notifikasi dipanggil dengan argumen yang benar
     sendTelegramNotification(notificationMessage.replace(/\*\*/g, '<b>'), ACTIVE_DEVICE);
     sendDiscordNotification(notificationMessage, ACTIVE_DEVICE);
     
@@ -915,9 +914,7 @@ resumeBtn.addEventListener("click", async () => {
         device: ACTIVE_DEVICE 
       })
     });
-    
     const result = await res.json();
-    
     if (result.success) {
       showAlert(`Data dan notifikasi untuk ${ACTIVE_DEVICE} berhasil dilanjutkan`, "success");
       await checkPauseStatus();
