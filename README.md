@@ -1,73 +1,92 @@
 # Smart Trash Monitoring System
 
-## 📝 Deskripsi Proyek
+## 📝 Project Description
 
-Sistem monitoring tempat sampah pintar berbasis IoT yang memantau tingkat pengisian tempat sampah menggunakan sensor ultrasonik dan menampilkan data secara real-time melalui antarmuka web. Sistem ini terdiri dari:
+An IoT-based smart trash monitoring system that tracks the fill level of trash cans using ultrasonic sensors and displays real-time data through a web interface. The system consists of:
 
-- Perangkat IoT berbasis ESP32
-- Backend server (Node.js)
-- Frontend web (HTML, CSS, JavaScript)
-- Integrasi dengan Firebase, Telegram, dan Discord
+- An ESP32-based IoT device
+- A serverless backend on Netlify (Node.js)
+- A web frontend (HTML, CSS, JavaScript)
+- Integration with Firebase, Telegram, and Discord
 
-## 🛠️ Fitur Utama
+## 🛠️ Key Features
 
-- **Monitoring Real-time**:
-  - Tinggi sampah dalam cm
-  - Persentase pengisian
-  - Status (KOSONG/SEDANG/PENUH)
-  - Tegangan baterai
-- **Notifikasi Otomatis**:
-  - Telegram untuk status penting
-  - Discord untuk logging sistem
-- **Manajemen Data**:
-  - Penyimpanan data di Firebase
-  - Ekspor data ke CSV
-    Filter dan pencarian data
+- **Real-time Monitoring**:
+  - Trash distance in cm
+  - Fill percentage
+  - Status (EMPTY/MEDIUM/FULL)
+  - Battery voltage
+- **Automatic Notifications**:
+  - Status notifications to Telegram for each registered user.
+  - System logging to a Discord channel.
+- **Control via Telegram Commands**:
+  - Each user can personally pause (`/pause`) and resume (`/resume`) their own notifications.
+  - Support for two separate bots controlling two different devices.
+- **Data Management**:
+  - Data storage in Firebase Realtime Database.
+  - Data export to CSV format.
+  - Data filtering and searching on the web dashboard.
 - **Multi-device Support**:
-  - Dukungan untuk 2 perangkat terpisah
-  - Antarmuka khusus untuk setiap perangkat
-- **Keamanan**:
-  - Sistem login dengan 3 level akses (admin, user1, user2)
-  - Proteksi endpoint API
+  - Full support for 2 separate devices, each with its own dashboard and bot.
+- **Security**:
+  - Login system with 3 access levels (admin, user1, user2).
+  - API endpoint protection.
 
-## 🚀 Deployment ke Netlify
+## 🚀 Deployment to Netlify
 
-**Prasyarat**
+**Prerequisites**
 
-1.  Akun [Netlify](https://www.netlify.com/)
-2.  Firebase project dengan Realtime Database & Kunci Service Account (file JSON).
-3.  Bot Telegram dan channel Discord (opsional).
+1.  A [Netlify](https://www.netlify.com/) account.
+2.  A Firebase project with Realtime Database & a Service Account Key (JSON file).
+3.  **Two** Telegram Bots (one for each device) and a Discord channel (optional).
 
-**Langkah-langkah Deployment**
+**Deployment Steps**
 
-1.  **Unggah Proyek ke GitHub**:
-    Pastikan semua file, termasuk folder `netlify` dan file `netlify.toml`, sudah ada di repositori GitHub Anda.
+1.  **Upload Project to GitHub**:
+    Ensure all files, including the `netlify` folder and the `netlify.toml` file, are in your GitHub repository.
 
-2.  **Deploy di Netlify**:
+2.  **Deploy on Netlify**:
 
-    - Dari dashboard Netlify, pilih "Add new site" -> "Import an existing project".
-    - Hubungkan ke repositori GitHub Anda.
-    - Pengaturan build akan terdeteksi otomatis dari `netlify.toml`. Cukup konfirmasi dan lanjutkan.
+    - From the Netlify dashboard, select "Add new site" -> "Import an existing project".
+    - Connect to your GitHub repository.
+    - The build settings will be automatically detected from `netlify.toml`. Simply confirm and proceed.
 
-3.  **Konfigurasi Environment Variables**:
+3.  **Configure Environment Variables**:
 
-    - Buka **Site settings > Build & deploy > Environment**.
-    - Tambahkan semua variabel yang Anda butuhkan (dari file `.env` lokal Anda), seperti `TELEGRAM_BOT_TOKEN`, `ADMIN_USERNAME`, dll.
-    - **Penting untuk Firebase**: Tambahkan variabel dari file `service-account-key.json` Anda:
-      - `FIREBASE_URL`: URL database Firebase Anda.
-      - `FIREBASE_PROJECT_ID`: `project_id` dari file JSON.
-      - `FIREBASE_CLIENT_EMAIL`: `client_email` dari file JSON.
-      - `FIREBASE_PRIVATE_KEY`: Salin seluruh isi `private_key` dari file JSON (termasuk `-----BEGIN PRIVATE KEY-----` dan `-----END PRIVATE KEY-----`), lalu tempelkan sebagai satu baris teks.
+    - Go to **Site settings > Build & deploy > Environment**.
+    - Add all the required variables:
+      - `TELEGRAM_BOT_TOKEN` (For Bot Device 1)
+      - `TELEGRAM_CHAT_ID` (List of user IDs for Bot 1, comma-separated)
+      - `TELEGRAM_BOT_TOKEN_DEVICE2` (For Bot Device 2)
+      - `TELEGRAM_CHAT_ID_DEVICE2` (List of user IDs for Bot 2, comma-separated)
+      - `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `USER1_USERNAME`, etc.
+    - **Important for Firebase**: Add the variables from your `service-account-key.json` file:
+      - `FIREBASE_URL`: Your Firebase database URL.
+      - `FIREBASE_PROJECT_ID`: The `project_id` from the JSON file.
+      - `FIREBASE_CLIENT_EMAIL`: The `client_email` from the JSON file.
+      - `FIREBASE_PRIVATE_KEY`: Copy the entire `private_key` content from the JSON file and paste it as a single line of text.
 
-4.  **Trigger Deploy**:
-    Setelah semua variabel disimpan, pergi ke tab "Deploys" dan trigger deploy ulang agar Netlify menggunakan variabel lingkungan yang baru.
+4.  **Configure Telegram Webhooks**:
 
-5.  **Konfigurasi ESP32**:
+    - After the project is successfully deployed, you need to register the webhooks for both of your bots. Open the following links in your browser, replacing the required information:
 
-    - Kode pada perangkat ESP32 tidak perlu diubah. Variabel `firebaseHost` tetap mengarah langsung ke URL Firebase, bukan ke URL Netlify.
+    - **For Bot Device 1:**
 
-6.  Konfigurasi Firebase Rules:
-    Pastikan Firebase Realtime Database memiliki rules berikut:
+      ```
+      [https://api.telegram.org/bot](https://api.telegram.org/bot)[YOUR_BOT_TOKEN_FOR_DEVICE_1]/setWebhook?url=https://[YOUR_NETLIFY_SITE_URL]/.netlify/functions/telegram-webhook-d1
+      ```
+
+    - **For Bot Device 2:**
+      ```
+      [https://api.telegram.org/bot](https://api.telegram.org/bot)[YOUR_BOT_TOKEN_FOR_DEVICE_2]/setWebhook?url=https://[YOUR_NETLIFY_SITE_URL]/.netlify/functions/telegram-webhook-d2
+      ```
+    - Ensure you get a `{"ok":true,"result":true,"description":"Webhook was set"}` response for both.
+
+5.  **Trigger Deploy**:
+    After saving all environment variables, go to the "Deploys" tab and trigger a new deploy to apply the changes.
+
+6.  **Firebase Rules Configuration**:
+    Ensure your Firebase Realtime Database has the following rules:
     ```json
     {
       "rules": {
@@ -84,78 +103,83 @@ Sistem monitoring tempat sampah pintar berbasis IoT yang memantau tingkat pengis
       }
     }
     ```
-7.  🏗️ Struktur Proyek
 
-    ```bash
-    smart-trash-monitoring/
-    ├── Arduino IDE/    # Kode untuk perangkat IoT
-    ├── netlify/
-    │ └── functions/    # Backend Serverless Functions
-    │ ├── env-config.js
-    │ └── trash-data.js
-    │ └── ...
-    ├── public/         # File frontend (situs statis)
-    │ ├── assets/
-    │ ├── css/
-    │ ├── js/
-    │ ├── device-1.html
-    │ ├── device-2.html
-    │ └── login.html
-    ├── netlify.toml    # Konfigurasi untuk Netlify
-    ├── package.json    # Dependencies Node.js
-    └── .gitignore      # Mengabaikan file sensitif
+## 🏗️ Project Structure
+
+`````bash
+smart-trash-monitoring/
+├── Arduino IDE/
+├── netlify/
+│   └── functions/
+│       ├── telegram-notify.js         # Sends general notifications
+│       ├── telegram-webhook-d1.js     # Receives commands for Bot 1
+│       ├── telegram-webhook-d2.js     # Receives commands for Bot 2
+│       ├── trash-data.js              # Data API for the web
+│       └── ...
+├── public/
+│   ├── assets/
+│   ├── css/
+│   ├── js/
+│   ├── device-1.html
+│   ├── device-2.html
+│   └── login.html
+├── netlify.toml
+└── package.json
     ```
 
 ## 🔌 Hardware Requirements
 
     - ESP32 Dev Module
-    - Sensor Ultrasonik HC-SR04
-    - Power supply (baterai 18650 atau USB)
-    - Modul pengukur tegangan baterai
-    - LCD I2C 16x2 (opsional)
+    - Ultrasonic Sensor HC-SR04
+    - Power supply (18650 battery or USB)
+    - Battery voltage measurement module (or a voltage divider)
+    - LCD I2C 16x2 (optional)
 
-## 📊 Diagram Arsitektur
+## 📊 Architecture Diagram
 
-    ```bash
-    [ESP32 Device] --(WiFi)--> [Firebase Realtime Database]
-                                  ↑
-                                  |
-    [Web Browser] <--(HTTP)--> [Netlify (CDN + Functions)]
-    ↓
-    [Telegram/Discord] <--(API)---+
+````bash
+[ESP32 Device 1 & 2] ----(WiFi)----> [Firebase Realtime DB]
+                                         ^
+                                         | (Read/Write Data)
+                                         v
+[Web Browser] <----(HTTPS)----> [Netlify: CDN + Functions] <----(Webhook)---- [Telegram Bot 1 & 2]
+   (API Call)                           ^         |                        (API Reply)
+                                        |         | (API Call)
+                                        +---------+------> [Discord]
     ```
 
-## 🧑‍💻 Penggunaan
+## 🧑‍💻 Usage
 
-1. **Login**:
-   - Admin: Akses penuh ke kedua device
-   - User1: Hanya bisa akses device 1
-   - User2: Hanya bisa akses device 2
-2. **Fitur Dashboard**:
-   - Lihat status real-time
-   - Filter data berdasarkan tanggal/status
-   - Ekspor data ke CSV
-   - Pause/resume data collection
-3. **Notifikasi**:
-   - Telegram: Status penting dan alert
-   - Discord: Logging sistem
+1. **Web Login**:
+   - **Admin**: Full access to both devices.
+   - **User1**: Access to device 1 only.
+   - **User2**: Access to device 2 only.
+2. **Web Dashboard**:
+   - View real-time status, statistics, and charts.
+   - Filter data by date/status.
+   - Export data to CSV.
+   - Pause/resume data sending from the ESP32 device (globally).
+3. **Telegram Bot Commands**:
+   - Open a chat with the corresponding bot (Bot 1 for Device 1, Bot 2 for Device 2).
+   - Send `/pause` to stop receiving notifications from that bot.
+   - Send `/resume` to start receiving notifications again.
+   - This feature is personal and will not affect other users' notifications.
 
-## 🛠️ Teknologi yang Digunakan
+## 🛠️ Technologies Used
 
 - **Frontend**: Bootstrap 5, Chart.js, Flatpickr
-- **Backend**: Node.js, Express.js
+- **Backend**: Node.js (within Netlify Functions)
 - **Database**: Firebase Realtime Database
 - **IoT**: ESP32 (Arduino Core)
-- **Integrasi**: Telegram Bot API, Discord.js
+- **Integrations**: Telegram Bot API, Discord Webhooks
 
 ## 📄 License
 
-Proyek ini dilisensikan di bawah MIT License - lihat file [LICENSE]() untuk detailnya.
+This project is licensed under the MIT License - see the [LICENSE]() file for details.
 
-## ✉️ Kontak
-
-Untuk pertanyaan lebih lanjut, silakan hubungi:
+## ✉️ Contact
 
 Fatony Ahmad Fauzi
-Email: fatonyahmadfauzi@gmail.com
-Telegram: @fatonyahmadfauzi
+- Email: fatonyahmadfauzi@gmail.com
+- Telegram: @fatonyahmadfauzi
+`````
