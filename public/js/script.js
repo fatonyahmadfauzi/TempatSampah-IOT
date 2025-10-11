@@ -892,9 +892,11 @@ resumeBtn.addEventListener("click", async () => {
 
     showAlert(offlineMessage, 'warning');
 
-    const notificationMessage = `⚠️ **Peringatan Sistem** ⚠️\nAdmin mencoba me-resume perangkat ${deviceName} yang terdeteksi sedang offline.`;
+    // --- BAGIAN YANG DIPERBAIKI ---
+    // Mengganti emoji ⚠️ dengan ❗️
+    const notificationMessage = `❗️ **Peringatan Sistem** ❗️\nAdmin mencoba me-resume perangkat ${deviceName} yang terdeteksi sedang offline.`;
     
-    // --- INI BAGIAN YANG DIPERBAIKI ---
+    // Memastikan kedua fungsi notifikasi dipanggil dengan DUA argumen
     sendTelegramNotification(notificationMessage.replace(/\*\*/g, '<b>'), ACTIVE_DEVICE);
     sendDiscordNotification(notificationMessage, ACTIVE_DEVICE);
     
