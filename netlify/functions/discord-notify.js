@@ -1,4 +1,4 @@
-// Lokasi: netlify/functions/telegram-notify.js
+// Lokasi: netlify/functions/discord-notify.js
 const axios = require('axios');
 
 exports.handler = async function(event) {
@@ -9,36 +9,45 @@ exports.handler = async function(event) {
     try {
         const { message, device = 'device1' } = JSON.parse(event.body);
 
-        const token = (device === 'device2')
-            ? process.env.TELEGRAM_BOT_TOKEN_DEVICE2
-            : process.env.TELEGRAM_BOT_TOKEN;
+        const token = process.env.DISCORD_BOT_TOKEN;
 
-        const chatIds = (device === 'device2')
-            ? (process.env.TELEGRAM_CHAT_ID_DEVICE2 || '').split(',')
-            : (process.env.TELEGRAM_CHAT_ID || '').split(',');
+        // --- BAGIAN YANG DIPERBAIKI ---
+        const channelId = (device === 'device2')
+            ? process.env.DISCORD_CHANNEL_ID_DEVICE2
+            : process.env.DISCORD_CHANNEL_ID_DEVICE1;
 
-        if (!token || chatIds.length === 0) {
-            throw new Error('Telegram credentials for ' + device + ' are not configured.');
+        if (!token || !channelId) {
+            throw new Error('Discord credentials for ' + device + ' are not configured in Netlify.');
         }
 
-        // Kirim notifikasi ke setiap chat ID
-        for (const chatId of chatIds) {
-            if (chatId) {
-                const url = `https://api.telegram.org/bot${token}/sendMessage`;
-                await axios.post(url, {
-                    chat_id: chatId.trim(),
-                    text: message,
-                    parse_mode: 'HTML'
-                });
+        const url = `https://discord.com/api/v10/channels/${channelId}/messages`;
+
+        const discordPayload = {
+            embeds: [{
+                color: 0x00FF00,
+                title: '🔔 Notifikasi Sistem',
+                description: message.replace(/<b>/g, '**').replace(/<\/b>/g, '**'),
+                timestamp: new Date().toISOString(),
+                footer: { text: `Sistem Monitoring - Device ${device}` }
+            }]
+        };
+
+        await axios.post(url, discordPayload, {
+            headers: {
+                'Authorization': `Bot ${token}`,
+                'Content-Type': 'application/json'
             }
-        }
+        });
 
         return {
             statusCode: 200,
-            body: JSON.stringify({ success: true, message: "Telegram notification sent." })
+            body: JSON.stringify({ success: true, message: "Discord notification sent." })
         };
     } catch (error) {
-        console.error("Telegram function error:", error);
+        console.error("Discord function error:", error.message);
+        if (error.response) {
+            console.error("Discord API Response:", error.response.data);
+        }
         return {
             statusCode: 500,
             body: JSON.stringify({ success: false, error: error.message })
