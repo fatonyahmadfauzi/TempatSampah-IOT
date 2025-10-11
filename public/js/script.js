@@ -317,8 +317,11 @@ let latestRecord = {};
 
 // Modifikasi fungsi updateSummaryCards():
 function updateSummaryCards() {
+    const deviceStatusElement = document.getElementById('device-status');
+    const deviceIconElement = document.getElementById('device-icon');
+
     if (!filteredData.length) {
-        // Tampilkan data default
+        // Tampilkan data default jika tidak ada data sama sekali
         document.getElementById('current-status-badge').textContent = 'NO DATA';
         document.getElementById('current-status-badge').className = 'status-badge bg-secondary';
         document.getElementById('current-distance').textContent = '0.0 cm';
@@ -326,121 +329,91 @@ function updateSummaryCards() {
         document.getElementById('last-update').textContent = 'N/A';
         document.getElementById('today-count').textContent = '0';
         document.getElementById('last-status').textContent = 'NO DATA';
-        document.getElementById('status-distribution').innerHTML = `
-            <div class="text-muted">No data available</div>
-        `;
+        document.getElementById('status-distribution').innerHTML = `<div class="text-muted">No data available</div>`;
+        
+        // Set status device ke OFFLINE jika tidak ada data
+        deviceStatusElement.textContent = 'OFFLINE';
+        deviceStatusElement.className = 'text-muted fw-bold';
+        deviceIconElement.className = 'bi bi-wifi-off fs-1 text-muted';
         return;
     }
 
-    // Pastikan latestRecord terdefinisi
     latestRecord = filteredData[0] || {};
     const fillLevel = calculateFillLevel(latestRecord.distance || 0);
 
-    // Update Current Status card
+    // --- LOGIKA BARU UNTUK DETEKSI OFFLINE ---
+    const now = new Date();
+    const lastDataTime = new Date(latestRecord.timestamp || 0);
+    const timeDifference = (now.getTime() - lastDataTime.getTime()) / 1000; // Selisih dalam detik
+
+    const isPaused = pauseBtn.classList.contains("disabled");
+
+    // Tentukan status device: OFFLINE, PAUSED, atau STREAMING
+    if (timeDifference > 120) { // Jika data terakhir lebih dari 2 menit yang lalu
+        deviceStatusElement.textContent = 'OFFLINE';
+        deviceStatusElement.className = 'text-muted fw-bold';
+        deviceIconElement.className = 'bi bi-wifi-off fs-1 text-muted';
+    } else if (isPaused) {
+        deviceStatusElement.textContent = 'PAUSED';
+        deviceStatusElement.className = 'text-danger fw-bold';
+        deviceIconElement.className = 'bi bi-pause-circle fs-1 text-danger';
+    } else {
+        deviceStatusElement.textContent = 'STREAMING';
+        deviceStatusElement.className = 'text-success fw-bold';
+        deviceIconElement.className = 'bi bi-play-circle fs-1 text-success';
+    }
+    // --- AKHIR LOGIKA BARU ---
+
+    // Update kartu lainnya seperti biasa (semua fungsi lama tetap ada)
     document.getElementById('current-status-badge').textContent = latestRecord.status || 'UNKNOWN';
     document.getElementById('current-status-badge').className = `status-badge ${getStatusClass(latestRecord.status)}`;
     document.getElementById('current-distance').textContent = `${(latestRecord.distance || 0).toFixed(1)} cm`;
     
-    // Update fill progress bar
     const progressBar = document.getElementById('fill-progress');
     progressBar.style.width = `${fillLevel}%`;
     progressBar.setAttribute('aria-valuenow', fillLevel);
     progressBar.className = `progress-bar ${getStatusClass(latestRecord.status)}`;
     
-    // Format last update time
     document.getElementById('last-update').textContent = formatTimestamp(latestRecord.timestamp || new Date().toISOString());
-
-    // Dapatkan tanggal hari ini dalam zona waktu Asia/Jakarta
-    const today = new Date();
-    const todayStr = today.toLocaleDateString('id-ID', {
-        timeZone: 'Asia/Jakarta'
-    }).split(',')[0]; // Format: "dd/mm/yyyy"
-
-    // Konversi ke format yang sama untuk perbandingan
-    const todayParts = todayStr.split('/');
-    const todayFormatted = `${todayParts[2]}-${todayParts[1].padStart(2, '0')}-${todayParts[0].padStart(2, '0')}`;
 
     const todayData = filteredData.filter(item => {
         if (!item.timestamp) return false;
-        
-        try {
-            // Parse timestamp dengan zona waktu Asia/Jakarta
-            const itemDate = new Date(item.timestamp);
-            const itemDateStr = itemDate.toLocaleDateString('id-ID', {
-                timeZone: 'Asia/Jakarta'
-            }).split(',')[0];
-            
-            // Bandingkan dengan tanggal hari ini
-            return itemDateStr === todayStr;
-        } catch (e) {
-            console.error('Invalid date in item:', item.timestamp);
-            return false;
-        }
+        const itemDateStr = new Date(item.timestamp).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' }).split(',')[0];
+        const todayStr = new Date().toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' }).split(',')[0];
+        return itemDateStr === todayStr;
     });
     
     document.getElementById('today-count').textContent = todayData.length;
     document.getElementById('last-status').textContent = latestRecord.status || 'UNKNOWN';
 
-    const statusCounts = {
-        KOSONG: 0,
-        SEDANG: 0,
-        PENUH: 0
-    };
-    
+    const statusCounts = { KOSONG: 0, SEDANG: 0, PENUH: 0 };
     todayData.forEach(item => {
         const status = normalizeStatus(item.status);
-        if (status in statusCounts) {
-            statusCounts[status]++;
-        }
+        if (status in statusCounts) statusCounts[status]++;
     });
 
     const total = todayData.length;
     let distributionHTML = '';
-    
     Object.entries(statusCounts).forEach(([status, count]) => {
         const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
         const statusClass = getStatusClass(status).replace('bg-', 'text-');
-        
         distributionHTML += `
             <div class="d-flex justify-content-between align-items-center mb-1">
                 <span>${status}</span>
                 <span class="${statusClass}">${count} (${percentage}%)</span>
             </div>
             <div class="progress mb-2" style="height: 5px;">
-                <div class="progress-bar ${getStatusClass(status)}" 
-                     role="progressbar" style="width: ${percentage}%" 
-                     aria-valuenow="${percentage}" aria-valuemin="0" aria-valuemax="100">
-                </div>
-            </div>
-        `;
+                <div class="progress-bar ${getStatusClass(status)}" role="progressbar" style="width: ${percentage}%"></div>
+            </div>`;
     });
+    document.getElementById('status-distribution').innerHTML = distributionHTML || `<div class="text-muted">No data available for today</div>`;
 
-    document.getElementById('status-distribution').innerHTML = distributionHTML;
-
-    // Update Battery & Power card
     const batteryInfo = getBatteryStatus(latestRecord.batteryVoltage || 0);
     document.getElementById('battery-status').className = `bi ${batteryInfo.icon} fs-1`;
     document.getElementById('battery-voltage').textContent = `${(latestRecord.batteryVoltage || 0).toFixed(2)}V`;
     document.getElementById('power-source').textContent = latestRecord.powerSource || 'Battery';
     document.getElementById('battery-last-reading').textContent = `Last reading: ${formatTimestamp(latestRecord.timestamp || new Date().toISOString())}`;
-    
-    // Update Device Info card
     document.getElementById('device-id').textContent = latestRecord.device || 'ESP32';
-    
-    // Periksa status pause/resume
-    const isPaused = pauseBtn.classList.contains("disabled");
-    const deviceStatusElement = document.getElementById('device-status');
-    const deviceIconElement = document.getElementById('device-icon');
-    
-    if (isPaused) {
-        deviceStatusElement.textContent = 'PAUSED';
-        deviceStatusElement.className = 'text-danger';
-        deviceIconElement.className = 'bi bi-pause-circle fs-1 text-danger';
-    } else {
-        deviceStatusElement.textContent = 'STREAMING';
-        deviceStatusElement.className = 'text-success';
-        deviceIconElement.className = 'bi bi-play-circle fs-1 text-success';
-    }
 }
 
 // Fungsi untuk mengirim notifikasi ke Telegram melalui server
