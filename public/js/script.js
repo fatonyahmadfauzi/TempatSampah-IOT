@@ -893,7 +893,7 @@ resumeBtn.addEventListener("click", async () => {
 
     showAlert(offlineMessage, 'warning');
 
-    const notificationMessage = `❗️ **Peringatan Sistem** ❗️\nAdmin mencoba me-resume perangkat ${deviceName} yang terdeteksi sedang offline.`;
+    const notificationMessage = `❗️ <b>Peringatan Sistem</b> ❗️\nAdmin mencoba me-resume perangkat ${deviceName} yang terdeteksi sedang offline.`;
     
     // Memastikan kedua fungsi notifikasi dipanggil dengan argumen yang benar
     sendTelegramNotification(notificationMessage.replace(/\*\*/g, '<b>'), ACTIVE_DEVICE);
