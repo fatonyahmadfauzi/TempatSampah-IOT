@@ -1,17 +1,21 @@
+// ========================
+// === GLOBAL VARIABLES ===
+// ========================
 const ACTIVE_DEVICE = window.location.pathname.includes('device-2') ? 'device2' : 'device1';
-// const API_BASE_URL = 'https://...'; // TIDAK DIPERLUKAN LAGI
-
-// Sample data - in a real app, this would come from an API
 let allData = [];
 let filteredData = [];
 let currentPage = 1;
 const rowsPerPage = 10;
 let fillChart = null;
-let isFetching = false; // Tambahkan ini
+let isFetching = false;
+let latestRecord = {};
+let isSidebarActive = false;
 
-// DOM Elements
+// ========================
+// === DOM ELEMENTS ===
+// ========================
 const dataTable = document.getElementById('data-table');
-const tableBody = dataTable.querySelector('tbody');
+const tableBody = dataTable?.querySelector('tbody');
 const prevPageBtn = document.getElementById('prev-page');
 const nextPageBtn = document.getElementById('next-page');
 const currentPageSpan = document.getElementById('current-page');
@@ -21,402 +25,631 @@ const statusFilter = document.getElementById('status-filter');
 const dateRangeInput = document.getElementById('date-range');
 const refreshBtn = document.getElementById('refresh-btn');
 const exportBtn = document.getElementById('export-btn');
+const deleteAllBtn = document.getElementById('delete-all-btn');
+const pauseBtn = document.getElementById('pauseBtn');
+const resumeBtn = document.getElementById('resumeBtn');
+const sidebarToggle = document.getElementById('sidebarToggle');
+const sidebar = document.getElementById('sidebar');
+const currentYear = document.getElementById('currentYear');
 
-// Tambahkan fungsi ini di bagian utility functions
-function getStatusClass(status) {
-    const normalized = status ? status.toUpperCase() : 'UNKNOWN';
-    switch(normalized) {
-        case 'KOSONG': return 'bg-success';
-        case 'SEDANG': return 'bg-warning';
-        case 'PENUH': return 'bg-danger';
-        default: return 'bg-secondary';
+// Telegram users configuration
+const telegramUsers = [
+  {
+    chatId: '5080707943',
+    name: 'Fatony Ahmad Fauzi'
+  },
+  {
+    chatId: '5869060700',
+    name: 'Ahmad Rifai'
+  }
+];
+
+// ========================
+// === UTILITY FUNCTIONS ===
+// ========================
+
+/**
+ * Menampilkan loading indicator
+ */
+function showLoading(show) {
+  const loader = document.getElementById('loading-indicator');
+  if (loader) {
+    loader.style.display = show ? 'block' : 'none';
+  }
+  
+  // Juga disable/enable tombol saat loading
+  if (refreshBtn) refreshBtn.disabled = show;
+  if (exportBtn) exportBtn.disabled = show;
+  if (deleteAllBtn) deleteAllBtn.disabled = show;
+  if (pauseBtn) pauseBtn.disabled = show;
+  if (resumeBtn) resumeBtn.disabled = show;
+}
+
+/**
+ * Menampilkan alert/pesan
+ */
+function showAlert(message, type = 'info') {
+  const alertContainer = document.getElementById('alert-container');
+  if (!alertContainer) return;
+  
+  // Hapus alert sebelumnya
+  const existingAlerts = alertContainer.querySelectorAll('.alert');
+  if (existingAlerts.length > 3) {
+    existingAlerts[0].remove();
+  }
+  
+  const alertDiv = document.createElement('div');
+  alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+  alertDiv.setAttribute('role', 'alert');
+  alertDiv.innerHTML = `
+    ${message}
+    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+  `;
+  
+  alertContainer.prepend(alertDiv);
+  
+  // Auto-hide setelah 5 detik
+  setTimeout(() => {
+    if (alertDiv.parentNode) {
+      alertDiv.classList.remove('show');
+      setTimeout(() => alertDiv.remove(), 150);
     }
+  }, 5000);
 }
 
-// Initialize date range picker
-flatpickr(dateRangeInput, {
-    mode: "range",
-    dateFormat: "Y-m-d"
-});
-
-// Initialize the chart
-// Initialize the chart
-function initChart() {
-    const ctx = document.getElementById('fill-chart').getContext('2d');
-    
-    // Destroy existing chart if it exists
-    if (fillChart) {
-        fillChart.destroy();
-    }
-    
-    fillChart = new Chart(ctx, {
-        type: 'line',
-        data: {
-            labels: [],
-            datasets: [{
-                label: 'Fill Level (%)',
-                data: [],
-                borderColor: 'rgba(75, 192, 192, 1)',
-                backgroundColor: 'rgba(75, 192, 192, 0.2)',
-                tension: 0.1,
-                fill: true
-            }]
-        },
-        options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    max: 100
-                }
-            }
-        }
-    });
-}
-
-// Update chart with new data
-function updateChart(data) {
-    if (!fillChart) return;
-    
-    // Ambil 20 data terbaru (sudah terurut dari baru ke lama)
-    const chartData = data.slice(0, 20);
-
-    fillChart.data.labels = chartData.map(item => {
-        try {
-            // Gunakan logika parsing yang sama dengan formatTimestamp
-            let date;
-            if (typeof item.timestamp === 'string') {
-                const fixedTimestamp = item.timestamp
-                    .replace(/(T\d{2}:\d{2}:\d{2})\d/, '$1')
-                    .replace(/Z?$/, '');
-                date = new Date(fixedTimestamp);
-                
-                if (isNaN(date.getTime())) {
-                    date = new Date(item.timestamp);
-                }
-            } else {
-                date = new Date(item.timestamp);
-            }
-
-            if (isNaN(date.getTime())) {
-                console.warn('Invalid date:', item.timestamp);
-                return 'Invalid Time';
-            }
-
-            // Hanya ambil bagian waktu saja seperti di formatTimestamp
-            return date.toLocaleTimeString('id-ID', {
-                hour: '2-digit',
-                minute: '2-digit',
-                second: '2-digit',
-                hour12: false,
-                timeZone: 'Asia/Jakarta'
-            }).replace(/\./g, ':');
-        } catch (e) {
-            console.error('Error formatting timestamp:', e, 'Raw value:', item.timestamp);
-            return 'Invalid Time';
-        }
-    });
-
-    fillChart.data.datasets[0].data = chartData.map(item => calculateFillLevel(item.distance));
-    fillChart.update();
-}
-
-// Format timestamp to readable string with DD/MM/YYYY HH:MM:SS format
+/**
+ * Format timestamp ke string yang readable
+ */
 function formatTimestamp(raw) {
-    try {
-        // Pastikan timestamp valid
-        let date;
-        if (typeof raw === 'string') {
-            // Perbaiki timestamp yang tidak valid dan normalisasi
-            const fixedTimestamp = raw
-                .replace(/(T\d{2}:\d{2}:\d{2})\d/, '$1') // Perbaiki digit tambahan
-                .replace(/Z?$/, ''); // Hapus Z jika ada
-            
-            date = new Date(fixedTimestamp);
-            
-            // Jika parsing gagal, coba format lain
-            if (isNaN(date.getTime())) {
-                date = new Date(raw);
-            }
-        } else {
-            date = new Date(raw);
-        }
-
-        if (isNaN(date.getTime())) {
-            console.warn('Invalid date:', raw);
-            return 'Invalid Time';
-        }
-
-        // Format tanggal dan waktu
-        const dateStr = date.toLocaleDateString('id-ID', {
-            day: '2-digit',
-            month: '2-digit',
-            year: 'numeric',
-            timeZone: 'Asia/Jakarta'
-        });
-        
-        const timeStr = date.toLocaleTimeString('id-ID', {
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false,
-            timeZone: 'Asia/Jakarta'
-        }).replace(/\./g, ':');
-
-        return `${dateStr} ${timeStr}`;
-    } catch (e) {
-        console.error('Error formatting timestamp:', e, 'Raw value:', raw);
-        return 'Invalid Time';
-    }
-}
-
-function normalizeStatus(status) {
-    if (!status) return 'UNKNOWN';
+  try {
+    if (!raw) return 'Invalid Time';
     
-    const statusStr = String(status).toUpperCase().trim();
-    
-    // Handle berbagai kemungkinan penulisan status
-    if (statusStr === 'EMPTY' || statusStr === 'KOSONG' || statusStr === '0%') return 'KOSONG';
-    if (statusStr === 'MEDIUM' || statusStr === 'SEDANG' || statusStr === '50%') return 'SEDANG';
-    if (statusStr === 'FULL' || statusStr === 'PENUH' || statusStr === '100%') return 'PENUH';
-    
-    return 'UNKNOWN';
-}
-
-// Render table rows with pagination
-function renderTableRows(data, page) {
-    console.log("📄 Rendering table with rows:", data.length);
-
-    tableBody.innerHTML = '';
-    const start = (page - 1) * rowsPerPage;
-    const end = start + rowsPerPage;
-    const paginatedData = data.slice(start, end);
-
-    if (paginatedData.length === 0) {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td colspan="6" class="text-center py-4">No data available</td>`;
-        tableBody.appendChild(tr);
-        return;
-    }
-
-        paginatedData.forEach(item => {
-        const tr = document.createElement("tr");
-        const fillLevel = calculateFillLevel(item.distance);
-        const batteryStatus = getBatteryStatus(item.batteryVoltage);
-        
-        tr.innerHTML = `
-        <td>${formatTimestamp(item.timestamp)}</td>
-        <td>${item.distance?.toFixed?.(1) || '0.0'}</td>
-        <td>
-            <div class="progress" style="height: 20px;">
-                <div class="progress-bar ${getStatusClass(item.status)}" 
-                    role="progressbar" style="width: ${fillLevel}%" 
-                    aria-valuenow="${fillLevel}" aria-valuemin="0" aria-valuemax="100">
-                    ${fillLevel}%
-                </div>
-            </div>
-        </td>
-        <td><span class="badge ${getStatusClass(item.status)}">${item.status || 'UNKNOWN'}</span></td>
-        <td>
-            <div class="d-flex align-items-center">
-                <i class="bi bi-battery ${batteryStatus.icon} me-2"></i>
-                ${item.batteryVoltage?.toFixed?.(2) || '0.00'}V
-            </div>
-        </td>
-        `;
-        tableBody.appendChild(tr);
-    });
-}
-
-// Update pagination controls
-function updatePagination(data) {
-    const totalPages = Math.max(1, Math.ceil(data.length / rowsPerPage));
-    currentPage = Math.min(currentPage, totalPages);
-    
-    prevPageBtn.parentElement.classList.toggle('disabled', currentPage <= 1);
-    nextPageBtn.parentElement.classList.toggle('disabled', currentPage >= totalPages);
-    currentPageSpan.textContent = currentPage;
-}
-
-// Filter data based on search and filters
-function filterData() {
-    try {
-        if (!Array.isArray(allData)) {
-            console.error('Data tidak valid:', allData);
-            allData = [];
-        }
-
-        const searchTerm = searchInput.value.toLowerCase();
-        const status = statusFilter.value;
-        const dateRange = dateRangeInput.value;
-
-        filteredData = allData.filter(item => {
-            // Pastikan item memiliki struktur yang benar
-            if (!item || typeof item !== 'object') return false;
-            
-            // Validasi field penting
-            const validItem = {
-                timestamp: item.timestamp || '',
-                distance: item.distance ?? 0,
-                status: item.status || 'UNKNOWN',
-                notes: item.notes || ''
-            };
-
-            // Filter pencarian
-            const matchesSearch = 
-                String(validItem.timestamp).toLowerCase().includes(searchTerm) ||
-                String(validItem.distance).includes(searchTerm) ||
-                validItem.status.toLowerCase().includes(searchTerm) ||
-                validItem.notes.toLowerCase().includes(searchTerm);
-
-            // Filter status
-            const matchesStatus = status === '' || validItem.status === status;
-
-            // Filter tanggal
-            let matchesDate = true;
-            if (dateRange) {
-                try {
-                    const [start, end] = dateRange.split(' to ');
-                    const itemDate = new Date(validItem.timestamp);
-                    const startDate = new Date(start);
-                    const endDate = new Date(end);
-                    
-                    matchesDate = itemDate >= startDate && itemDate <= endDate;
-                } catch (e) {
-                    console.error('Error filtering date:', e);
-                }
-            }
-
-            return matchesSearch && matchesStatus && matchesDate;
-        });
-
-        // Pertahankan urutan descending berdasarkan timestamp
-        filteredData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-        
-        currentPage = 1;
-        renderTableRows(filteredData, currentPage);
-        updatePagination(filteredData);
-        updateChart(filteredData);
-        updateSummaryCards();
-    } catch (error) {
-        console.error('Error filtering data:', error);
-    }
-}
-
-// Tambahkan fungsi baru untuk status baterai
-function getBatteryStatus(voltage) {
-    if (voltage >= 3.7) return { icon: 'bi-battery-full text-success', status: 'Normal' };
-    if (voltage >= 3.3) return { icon: 'bi-battery-half text-warning', status: 'Rendah' };
-    return { icon: 'bi-battery text-danger', status: 'Kritis' };
-}
-
-// Update summary cards with latest data
-// Di bagian atas file, tambahkan:
-let latestRecord = {};
-
-// Modifikasi fungsi updateSummaryCards():
-function updateSummaryCards() {
-    const deviceStatusElement = document.getElementById('device-status');
-    const deviceIconElement = document.getElementById('device-icon');
-
-    if (!filteredData.length) {
-        // Tampilkan data default jika tidak ada data sama sekali
-        document.getElementById('current-status-badge').textContent = 'NO DATA';
-        document.getElementById('current-status-badge').className = 'status-badge bg-secondary';
-        document.getElementById('current-distance').textContent = '0.0 cm';
-        document.getElementById('fill-progress').style.width = '0%';
-        document.getElementById('last-update').textContent = 'N/A';
-        document.getElementById('today-count').textContent = '0';
-        document.getElementById('last-status').textContent = 'NO DATA';
-        document.getElementById('status-distribution').innerHTML = `<div class="text-muted">No data available</div>`;
-        
-        // Set status device ke OFFLINE jika tidak ada data
-        deviceStatusElement.textContent = 'OFFLINE';
-        deviceStatusElement.className = 'text-muted fw-bold';
-        deviceIconElement.className = 'bi bi-wifi-off fs-1 text-muted';
-        return;
-    }
-
-    latestRecord = filteredData[0] || {};
-    const fillLevel = calculateFillLevel(latestRecord.distance || 0);
-
-    // --- LOGIKA BARU UNTUK DETEKSI OFFLINE ---
-    const now = new Date();
-    const lastDataTime = new Date(latestRecord.timestamp || 0);
-    const timeDifference = (now.getTime() - lastDataTime.getTime()) / 1000; // Selisih dalam detik
-
-    const isPaused = pauseBtn.classList.contains("disabled");
-
-    // Tentukan status device: OFFLINE, PAUSED, atau STREAMING
-    if (timeDifference > 120) { // Jika data terakhir lebih dari 2 menit yang lalu
-        deviceStatusElement.textContent = 'OFFLINE';
-        deviceStatusElement.className = 'text-muted fw-bold';
-        deviceIconElement.className = 'bi bi-wifi-off fs-1 text-muted';
-    } else if (isPaused) {
-        deviceStatusElement.textContent = 'PAUSED';
-        deviceStatusElement.className = 'text-danger fw-bold';
-        deviceIconElement.className = 'bi bi-pause-circle fs-1 text-danger';
+    let date;
+    if (typeof raw === 'string') {
+      // Perbaiki timestamp yang tidak valid
+      const fixedTimestamp = raw
+        .replace(/(T\d{2}:\d{2}:\d{2})\d/, '$1')
+        .replace(/Z?$/, '');
+      
+      date = new Date(fixedTimestamp);
+      
+      if (isNaN(date.getTime())) {
+        date = new Date(raw);
+      }
     } else {
-        deviceStatusElement.textContent = 'STREAMING';
-        deviceStatusElement.className = 'text-success fw-bold';
-        deviceIconElement.className = 'bi bi-play-circle fs-1 text-success';
+      date = new Date(raw);
     }
-    // --- AKHIR LOGIKA BARU ---
 
-    // Update kartu lainnya seperti biasa (semua fungsi lama tetap ada)
-    document.getElementById('current-status-badge').textContent = latestRecord.status || 'UNKNOWN';
-    document.getElementById('current-status-badge').className = `status-badge ${getStatusClass(latestRecord.status)}`;
-    document.getElementById('current-distance').textContent = `${(latestRecord.distance || 0).toFixed(1)} cm`;
-    
-    const progressBar = document.getElementById('fill-progress');
-    progressBar.style.width = `${fillLevel}%`;
-    progressBar.setAttribute('aria-valuenow', fillLevel);
-    progressBar.className = `progress-bar ${getStatusClass(latestRecord.status)}`;
-    
-    document.getElementById('last-update').textContent = formatTimestamp(latestRecord.timestamp || new Date().toISOString());
+    if (isNaN(date.getTime())) {
+      console.warn('Invalid date:', raw);
+      return 'Invalid Time';
+    }
 
-    const todayData = filteredData.filter(item => {
-        if (!item.timestamp) return false;
-        const itemDateStr = new Date(item.timestamp).toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' }).split(',')[0];
-        const todayStr = new Date().toLocaleDateString('id-ID', { timeZone: 'Asia/Jakarta' }).split(',')[0];
-        return itemDateStr === todayStr;
+    // Format tanggal dan waktu dengan timezone Jakarta
+    const dateStr = date.toLocaleDateString('id-ID', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      timeZone: 'Asia/Jakarta'
     });
     
-    document.getElementById('today-count').textContent = todayData.length;
-    document.getElementById('last-status').textContent = latestRecord.status || 'UNKNOWN';
+    const timeStr = date.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Jakarta'
+    }).replace(/\./g, ':');
 
-    const statusCounts = { KOSONG: 0, SEDANG: 0, PENUH: 0 };
-    todayData.forEach(item => {
-        const status = normalizeStatus(item.status);
-        if (status in statusCounts) statusCounts[status]++;
-    });
-
-    const total = todayData.length;
-    let distributionHTML = '';
-    Object.entries(statusCounts).forEach(([status, count]) => {
-        const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-        const statusClass = getStatusClass(status).replace('bg-', 'text-');
-        distributionHTML += `
-            <div class="d-flex justify-content-between align-items-center mb-1">
-                <span>${status}</span>
-                <span class="${statusClass}">${count} (${percentage}%)</span>
-            </div>
-            <div class="progress mb-2" style="height: 5px;">
-                <div class="progress-bar ${getStatusClass(status)}" role="progressbar" style="width: ${percentage}%"></div>
-            </div>`;
-    });
-    document.getElementById('status-distribution').innerHTML = distributionHTML || `<div class="text-muted">No data available for today</div>`;
-
-    const batteryInfo = getBatteryStatus(latestRecord.batteryVoltage || 0);
-    document.getElementById('battery-status').className = `bi ${batteryInfo.icon} fs-1`;
-    document.getElementById('battery-voltage').textContent = `${(latestRecord.batteryVoltage || 0).toFixed(2)}V`;
-    document.getElementById('power-source').textContent = latestRecord.powerSource || 'Battery';
-    document.getElementById('battery-last-reading').textContent = `Last reading: ${formatTimestamp(latestRecord.timestamp || new Date().toISOString())}`;
-    document.getElementById('device-id').textContent = latestRecord.device || 'ESP32';
+    return `${dateStr} ${timeStr}`;
+  } catch (e) {
+    console.error('Error formatting timestamp:', e);
+    return 'Invalid Time';
+  }
 }
 
-// Fungsi untuk mengirim notifikasi ke Telegram melalui server
+/**
+ * Normalize status ke format standar
+ */
+function normalizeStatus(status) {
+  if (!status) return 'UNKNOWN';
+  
+  const statusStr = String(status).toUpperCase().trim();
+  
+  if (statusStr === 'EMPTY' || statusStr === 'KOSONG' || statusStr === '0%') return 'KOSONG';
+  if (statusStr === 'MEDIUM' || statusStr === 'SEDANG' || statusStr === '50%') return 'SEDANG';
+  if (statusStr === 'FULL' || statusStr === 'PENUH' || statusStr === '100%') return 'PENUH';
+  
+  return 'UNKNOWN';
+}
+
+/**
+ * Mendapatkan class CSS untuk status
+ */
+function getStatusClass(status) {
+  const normalized = normalizeStatus(status);
+  switch(normalized) {
+    case 'KOSONG': return 'bg-success';
+    case 'SEDANG': return 'bg-warning';
+    case 'PENUH': return 'bg-danger';
+    default: return 'bg-secondary';
+  }
+}
+
+/**
+ * Menghitung fill level berdasarkan jarak
+ */
+function calculateFillLevel(distance) {
+  const maxHeight = 20; // Tinggi maksimal tempat sampah
+  distance = Math.min(distance, maxHeight);
+  const fillLevel = ((maxHeight - distance) / maxHeight) * 100;
+  return Math.min(100, Math.max(0, Math.round(fillLevel)));
+}
+
+/**
+ * Mendapatkan status baterai berdasarkan voltage
+ */
+function getBatteryStatus(voltage) {
+  if (voltage >= 3.7) return { 
+    icon: 'bi-battery-full text-success', 
+    status: 'Normal',
+    class: 'text-success'
+  };
+  if (voltage >= 3.3) return { 
+    icon: 'bi-battery-half text-warning', 
+    status: 'Rendah',
+    class: 'text-warning'
+  };
+  return { 
+    icon: 'bi-battery text-danger', 
+    status: 'Kritis',
+    class: 'text-danger'
+  };
+}
+
+/**
+ * Inisialisasi chart
+ */
+function initChart() {
+  const ctx = document.getElementById('fill-chart');
+  if (!ctx) return;
+  
+  // Destroy existing chart
+  if (fillChart) {
+    fillChart.destroy();
+  }
+  
+  const chartConfig = {
+    type: 'line',
+    data: {
+      labels: [],
+      datasets: [{
+        label: 'Fill Level (%)',
+        data: [],
+        borderColor: 'rgba(46, 125, 50, 1)',
+        backgroundColor: 'rgba(46, 125, 50, 0.1)',
+        borderWidth: 2,
+        tension: 0.1,
+        fill: true,
+        pointBackgroundColor: 'rgba(46, 125, 50, 1)',
+        pointRadius: 4,
+        pointHoverRadius: 6
+      }]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: true,
+          position: 'top',
+          labels: {
+            color: '#333',
+            font: {
+              size: 12
+            }
+          }
+        },
+        tooltip: {
+          mode: 'index',
+          intersect: false,
+          backgroundColor: 'rgba(0, 0, 0, 0.7)',
+          titleColor: '#fff',
+          bodyColor: '#fff',
+          padding: 10,
+          cornerRadius: 4
+        }
+      },
+      scales: {
+        x: {
+          grid: {
+            color: 'rgba(0, 0, 0, 0.05)'
+          },
+          ticks: {
+            color: '#666',
+            maxRotation: 45
+          }
+        },
+        y: {
+          beginAtZero: true,
+          max: 100,
+          grid: {
+            color: 'rgba(0, 0, 0, 0.05)'
+          },
+          ticks: {
+            color: '#666',
+            callback: function(value) {
+              return value + '%';
+            }
+          }
+        }
+      },
+      interaction: {
+        intersect: false,
+        mode: 'index'
+      },
+      animation: {
+        duration: 750,
+        easing: 'easeInOutQuart'
+      }
+    }
+  };
+  
+  fillChart = new Chart(ctx, chartConfig);
+}
+
+/**
+ * Update chart dengan data baru
+ */
+function updateChart(data) {
+  if (!fillChart || !data || data.length === 0) return;
+  
+  // Ambil 20 data terbaru
+  const chartData = data.slice(0, 20);
+  
+  // Reverse untuk urutan waktu yang benar (lama ke baru)
+  const reversedData = [...chartData].reverse();
+  
+  fillChart.data.labels = reversedData.map(item => {
+    try {
+      let date;
+      if (typeof item.timestamp === 'string') {
+        const fixedTimestamp = item.timestamp
+          .replace(/(T\d{2}:\d{2}:\d{2})\d/, '$1')
+          .replace(/Z?$/, '');
+        date = new Date(fixedTimestamp);
+        
+        if (isNaN(date.getTime())) {
+          date = new Date(item.timestamp);
+        }
+      } else {
+        date = new Date(item.timestamp);
+      }
+
+      if (isNaN(date.getTime())) {
+        return 'Invalid Time';
+      }
+
+      return date.toLocaleTimeString('id-ID', {
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+        timeZone: 'Asia/Jakarta'
+      }).replace(/\./g, ':');
+    } catch (e) {
+      return 'Invalid Time';
+    }
+  });
+
+  fillChart.data.datasets[0].data = reversedData.map(item => calculateFillLevel(item.distance));
+  fillChart.update();
+}
+
+/**
+ * Render tabel dengan pagination
+ */
+function renderTableRows(data, page) {
+  if (!tableBody) return;
+  
+  tableBody.innerHTML = '';
+  const start = (page - 1) * rowsPerPage;
+  const end = start + rowsPerPage;
+  const paginatedData = data.slice(start, end);
+
+  if (paginatedData.length === 0) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `<td colspan="5" class="text-center py-4">Tidak ada data yang tersedia</td>`;
+    tableBody.appendChild(tr);
+    return;
+  }
+
+  paginatedData.forEach(item => {
+    const tr = document.createElement("tr");
+    tr.className = 'fade-in';
+    
+    const fillLevel = calculateFillLevel(item.distance);
+    const batteryStatus = getBatteryStatus(item.batteryVoltage);
+    const statusClass = getStatusClass(item.status);
+    const statusText = item.status || 'UNKNOWN';
+    
+    tr.innerHTML = `
+      <td>${formatTimestamp(item.timestamp)}</td>
+      <td>${item.distance?.toFixed?.(1) || '0.0'} cm</td>
+      <td>
+        <div class="progress" style="height: 20px;" role="progressbar" 
+             aria-valuenow="${fillLevel}" aria-valuemin="0" aria-valuemax="100">
+          <div class="progress-bar ${statusClass}" 
+               style="width: ${fillLevel}%">
+            ${fillLevel}%
+          </div>
+        </div>
+      </td>
+      <td>
+        <span class="badge ${statusClass}">${statusText}</span>
+      </td>
+      <td>
+        <div class="d-flex align-items-center">
+          <i class="bi ${batteryStatus.icon} me-2"></i>
+          <span class="${batteryStatus.class} fw-bold">
+            ${item.batteryVoltage?.toFixed?.(2) || '0.00'}V
+          </span>
+        </div>
+      </td>
+    `;
+    tableBody.appendChild(tr);
+  });
+}
+
+/**
+ * Update pagination controls
+ */
+function updatePagination(data) {
+  if (!prevPageBtn || !nextPageBtn || !currentPageSpan) return;
+  
+  const totalPages = Math.max(1, Math.ceil(data.length / rowsPerPage));
+  currentPage = Math.min(currentPage, totalPages);
+  
+  prevPageBtn.parentElement.classList.toggle('disabled', currentPage <= 1);
+  nextPageBtn.parentElement.classList.toggle('disabled', currentPage >= totalPages);
+  currentPageSpan.textContent = currentPage;
+}
+
+/**
+ * Filter data berdasarkan search dan filters
+ */
+function filterData() {
+  try {
+    if (!Array.isArray(allData)) {
+      console.error('Data tidak valid:', allData);
+      allData = [];
+    }
+
+    const searchTerm = searchInput.value.toLowerCase();
+    const status = statusFilter.value;
+    const dateRange = dateRangeInput.value;
+
+    filteredData = allData.filter(item => {
+      if (!item || typeof item !== 'object') return false;
+      
+      const validItem = {
+        timestamp: item.timestamp || '',
+        distance: item.distance ?? 0,
+        status: item.status || 'UNKNOWN',
+        notes: item.notes || '',
+        batteryVoltage: item.batteryVoltage || 0,
+        device: item.device || ''
+      };
+
+      // Filter pencarian
+      const matchesSearch = 
+        String(validItem.timestamp).toLowerCase().includes(searchTerm) ||
+        String(validItem.distance).includes(searchTerm) ||
+        validItem.status.toLowerCase().includes(searchTerm) ||
+        validItem.notes.toLowerCase().includes(searchTerm) ||
+        validItem.device.toLowerCase().includes(searchTerm);
+
+      // Filter status
+      const matchesStatus = status === '' || validItem.status === status;
+
+      // Filter tanggal
+      let matchesDate = true;
+      if (dateRange) {
+        try {
+          const [start, end] = dateRange.split(' to ');
+          const itemDate = new Date(validItem.timestamp);
+          const startDate = new Date(start);
+          const endDate = new Date(end);
+          
+          // Set waktu untuk end date ke akhir hari
+          endDate.setHours(23, 59, 59, 999);
+          
+          matchesDate = itemDate >= startDate && itemDate <= endDate;
+        } catch (e) {
+          console.error('Error filtering date:', e);
+        }
+      }
+
+      return matchesSearch && matchesStatus && matchesDate;
+    });
+
+    // Urutkan descending berdasarkan timestamp
+    filteredData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    
+    currentPage = 1;
+    renderTableRows(filteredData, currentPage);
+    updatePagination(filteredData);
+    updateChart(filteredData);
+    updateSummaryCards();
+  } catch (error) {
+    console.error('Error filtering data:', error);
+    showAlert('Terjadi kesalahan saat memfilter data', 'danger');
+  }
+}
+
+/**
+ * Update summary cards dengan data terbaru
+ */
+function updateSummaryCards() {
+  const deviceStatusElement = document.getElementById('device-status');
+  const deviceIconElement = document.getElementById('device-icon');
+  const currentStatusBadge = document.getElementById('current-status-badge');
+  const currentDistance = document.getElementById('current-distance');
+  const fillProgress = document.getElementById('fill-progress');
+  const lastUpdate = document.getElementById('last-update');
+  const todayCount = document.getElementById('today-count');
+  const lastStatus = document.getElementById('last-status');
+  const statusDistribution = document.getElementById('status-distribution');
+  const batteryStatusIcon = document.getElementById('battery-status');
+  const batteryVoltage = document.getElementById('battery-voltage');
+  const powerSource = document.getElementById('power-source');
+  const batteryLastReading = document.getElementById('battery-last-reading');
+  const deviceId = document.getElementById('device-id');
+
+  if (!filteredData.length) {
+    // Tampilkan data default jika tidak ada data
+    if (currentStatusBadge) {
+      currentStatusBadge.textContent = 'NO DATA';
+      currentStatusBadge.className = 'status-badge bg-secondary';
+    }
+    
+    if (currentDistance) currentDistance.textContent = '0.0 cm';
+    if (fillProgress) {
+      fillProgress.style.width = '0%';
+      fillProgress.setAttribute('aria-valuenow', '0');
+      fillProgress.textContent = '0%';
+    }
+    if (lastUpdate) lastUpdate.textContent = 'N/A';
+    if (todayCount) todayCount.textContent = '0';
+    if (lastStatus) lastStatus.textContent = 'NO DATA';
+    if (statusDistribution) statusDistribution.innerHTML = `<div class="text-muted">Tidak ada data yang tersedia</div>`;
+    
+    // Set status device ke OFFLINE
+    if (deviceStatusElement) {
+      deviceStatusElement.textContent = 'OFFLINE';
+      deviceStatusElement.className = 'text-muted fw-bold';
+    }
+    if (deviceIconElement) deviceIconElement.className = 'bi bi-wifi-off fs-1 text-muted';
+    if (deviceId) deviceId.textContent = 'OFFLINE';
+    
+    // Battery info
+    if (batteryStatusIcon) batteryStatusIcon.className = 'bi bi-battery fs-1 text-danger';
+    if (batteryVoltage) batteryVoltage.textContent = '0.00V';
+    if (powerSource) powerSource.textContent = 'Unknown';
+    if (batteryLastReading) batteryLastReading.textContent = 'Last reading: N/A';
+    
+    return;
+  }
+
+  latestRecord = filteredData[0] || {};
+  const fillLevel = calculateFillLevel(latestRecord.distance || 0);
+
+  // Deteksi status device: OFFLINE, PAUSED, atau STREAMING
+  const now = new Date();
+  const lastDataTime = new Date(latestRecord.timestamp || 0);
+  const timeDifference = (now.getTime() - lastDataTime.getTime()) / 1000;
+  const isPaused = pauseBtn && pauseBtn.classList.contains("disabled");
+
+  let deviceStatus = 'OFFLINE';
+  let deviceStatusClass = 'text-muted fw-bold';
+  let deviceIconClass = 'bi bi-wifi-off fs-1 text-muted';
+  
+  if (timeDifference > 120) { // Lebih dari 2 menit
+    deviceStatus = 'OFFLINE';
+    deviceStatusClass = 'text-muted fw-bold';
+    deviceIconClass = 'bi bi-wifi-off fs-1 text-muted';
+  } else if (isPaused) {
+    deviceStatus = 'PAUSED';
+    deviceStatusClass = 'text-danger fw-bold';
+    deviceIconClass = 'bi bi-pause-circle fs-1 text-danger';
+  } else {
+    deviceStatus = 'STREAMING';
+    deviceStatusClass = 'text-success fw-bold';
+    deviceIconClass = 'bi bi-play-circle fs-1 text-success';
+  }
+
+  if (deviceStatusElement) {
+    deviceStatusElement.textContent = deviceStatus;
+    deviceStatusElement.className = deviceStatusClass;
+  }
+  if (deviceIconElement) deviceIconElement.className = deviceIconClass;
+
+  // Update kartu lainnya
+  const currentStatus = latestRecord.status || 'UNKNOWN';
+  if (currentStatusBadge) {
+    currentStatusBadge.textContent = currentStatus;
+    currentStatusBadge.className = `status-badge status-${currentStatus}`;
+  }
+  
+  if (currentDistance) currentDistance.textContent = `${(latestRecord.distance || 0).toFixed(1)} cm`;
+  
+  if (fillProgress) {
+    const statusClass = getStatusClass(currentStatus);
+    fillProgress.style.width = `${fillLevel}%`;
+    fillProgress.setAttribute('aria-valuenow', fillLevel);
+    fillProgress.className = `progress-bar ${statusClass}`;
+    fillProgress.textContent = `${fillLevel}%`;
+  }
+  
+  if (lastUpdate) lastUpdate.textContent = formatTimestamp(latestRecord.timestamp || new Date().toISOString());
+
+  // Hitung data hari ini
+  const todayData = filteredData.filter(item => {
+    if (!item.timestamp) return false;
+    const itemDate = new Date(item.timestamp);
+    const today = new Date();
+    
+    return itemDate.getDate() === today.getDate() &&
+           itemDate.getMonth() === today.getMonth() &&
+           itemDate.getFullYear() === today.getFullYear();
+  });
+  
+  if (todayCount) todayCount.textContent = todayData.length;
+  if (lastStatus) lastStatus.textContent = currentStatus;
+
+  // Status distribution
+  const statusCounts = { KOSONG: 0, SEDANG: 0, PENUH: 0 };
+  todayData.forEach(item => {
+    const status = normalizeStatus(item.status);
+    if (status in statusCounts) statusCounts[status]++;
+  });
+
+  const total = todayData.length;
+  let distributionHTML = '';
+  
+  Object.entries(statusCounts).forEach(([status, count]) => {
+    const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
+    const statusClass = getStatusClass(status);
+    distributionHTML += `
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <span>${status}</span>
+        <span class="${statusClass}">${count} (${percentage}%)</span>
+      </div>
+      <div class="progress mb-2" style="height: 5px;">
+        <div class="progress-bar ${statusClass}" style="width: ${percentage}%"></div>
+      </div>
+    `;
+  });
+  
+  if (statusDistribution) {
+    statusDistribution.innerHTML = distributionHTML || 
+      `<div class="text-muted">Tidak ada data untuk hari ini</div>`;
+  }
+
+  // Battery info
+  const batteryInfo = getBatteryStatus(latestRecord.batteryVoltage || 0);
+  if (batteryStatusIcon) batteryStatusIcon.className = `bi ${batteryInfo.icon} fs-1`;
+  if (batteryVoltage) batteryVoltage.textContent = `${(latestRecord.batteryVoltage || 0).toFixed(2)}V`;
+  if (powerSource) powerSource.textContent = latestRecord.powerSource || 'Battery';
+  if (batteryLastReading) {
+    batteryLastReading.textContent = `Last reading: ${formatTimestamp(latestRecord.timestamp || new Date().toISOString())}`;
+  }
+  
+  if (deviceId) deviceId.textContent = latestRecord.device || ACTIVE_DEVICE.toUpperCase();
+}
+
+/**
+ * Kirim notifikasi Telegram
+ */
 async function sendTelegramNotification(message, device = ACTIVE_DEVICE) {
   try {
     const res = await fetch(`/api/telegram-notify`, {
@@ -426,7 +659,7 @@ async function sendTelegramNotification(message, device = ACTIVE_DEVICE) {
       },
       body: JSON.stringify({ 
         message,
-        device // Tambahkan parameter device
+        device
       })
     });
     
@@ -441,298 +674,70 @@ async function sendTelegramNotification(message, device = ACTIVE_DEVICE) {
   }
 }
 
-// Di dalam public/js/script.js
-
-async function fetchData() {
+/**
+ * Kirim notifikasi Discord
+ */
+async function sendDiscordNotification(message, device = ACTIVE_DEVICE) {
   try {
-    showLoading(true);
-    const response = await fetch(`/api/trash-data?device=${ACTIVE_DEVICE}`);
+    const res = await fetch(`/api/discord-notify`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ message, device })
+    });
 
-    // Jika respons TIDAK ok (seperti 404, 502, dll.)
+    const result = await res.json();
+    return result.success;
+  } catch (error) {
+    console.error('Discord error:', error.message);
+    return false;
+  }
+}
+
+/**
+ * Fetch data dari server
+ */
+async function fetchData() {
+  if (isFetching) return;
+  
+  try {
+    isFetching = true;
+    showLoading(true);
+    
+    const response = await fetch(`/api/trash-data?device=${ACTIVE_DEVICE}`);
+    
     if (!response.ok) {
-      // Lemparkan error dengan status dari server
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
     const result = await response.json();
 
     if (result?.success) {
-      // Cek jika data yang diterima adalah array dan tidak kosong
       if (Array.isArray(result.data) && result.data.length > 0) {
-        allData = result.data; // Gunakan data langsung karena sudah diproses di backend
+        allData = result.data;
       } else {
-        // Handle jika data kosong dari API
         console.warn('API returned empty or invalid data');
-        allData = []; // Tampilkan tabel kosong
+        allData = [];
       }
     } else {
-      // Handle jika API mengembalikan success: false
       throw new Error(result.error || 'API returned an error');
     }
 
   } catch (error) {
-    // BLOK CATCH YANG DIPERBAIKI
     console.error('Fetch error:', error);
     showAlert(`Gagal memuat data dari server: ${error.message}`, 'danger');
-    allData = []; // Tampilkan tabel kosong, BUKAN data acak
+    allData = [];
   } finally {
-    // Apapun yang terjadi, jalankan ini
-    filterData(); // Ini akan me-render tabel (meskipun kosong)
-    showLoading(false);
-  }
-}
-
-// Tambahkan fungsi baru
-function updateDeviceHeader(deviceId) {
-    const header = document.querySelector('h2.fw-bold');
-    if (header) {
-        header.textContent = `DEVICE ${deviceId.toUpperCase().replace('DEVICE', '')} - TEMPAT SAMPAH PINTAR KU`;
-    }
-    
-    const deviceIdElement = document.getElementById('device-id');
-    if (deviceIdElement) {
-        deviceIdElement.textContent = deviceId.toUpperCase();
-    }
-}
-
-function calculateFillLevel(distance) {
-  const maxHeight = 20; // atau tinggi maksimal sesuai desain kamu
-  distance = Math.min(distance, maxHeight);
-  const fillLevel = ((maxHeight - distance) / maxHeight) * 100;
-  return Math.min(100, Math.max(0, Math.round(fillLevel)));
-}
-
-// Fungsi terpisah untuk proses data
-function processData(data) {
-  if (!data) return [];
-  
-  // Handle both array and object formats
-  if (Array.isArray(data)) {
-    return data.map(item => ({
-      timestamp: item.timestamp || new Date().toISOString(),
-      distance: parseFloat(item.distance) || 0,
-      status: item.status || 'UNKNOWN',
-      batteryVoltage: parseFloat(item.batteryVoltage) || 0,
-      powerSource: item.powerSource || 'Battery',
-      device: item.device || 'Unknown',
-      fillLevel: calculateFillLevel(item.distance || 0)
-    }));
-  }
-
-  // Handle object format
-  return Object.entries(data).map(([timestampKey, item]) => {
-    // Convert numeric timestamps to proper dates
-    let timestamp;
-    if (!isNaN(timestampKey)) {
-      const tsNum = parseInt(timestampKey);
-      timestamp = new Date(tsNum > 1e12 ? tsNum : tsNum * 1000).toISOString();
-    } else {
-      timestamp = item.timestamp || new Date().toISOString();
-    }
-    
-    return {
-      timestamp: timestamp,
-      distance: parseFloat(item.distance) || 0,
-      status: item.status || 'UNKNOWN',
-      batteryVoltage: parseFloat(item.batteryVoltage) || 0,
-      powerSource: item.powerSource || 'Battery',
-      device: item.device || 'Unknown',
-      fillLevel: calculateFillLevel(item.distance || 0)
-    };
-  });
-}
-
-// Generate realistic fallback data
-function generateFallbackData(deviceId = 'device1') {
-    const data = [];
-    const now = new Date();
-    const statuses = ['KOSONG', 'SEDANG', 'PENUH'];
-    
-    for (let i = 0; i < 24; i++) {
-        const timestamp = new Date(now);
-        timestamp.setHours(now.getHours() - i);
-        
-        const status = statuses[i % 3];
-        const distance = status === 'KOSONG' ? 2 + Math.random() * 3 :
-                        status === 'SEDANG' ? 8 + Math.random() * 4 :
-                        15 + Math.random() * 5;
-        
-        data.push({
-            timestamp: timestamp.toISOString(),
-            distance: parseFloat(distance.toFixed(1)),
-            status: status,
-            batteryVoltage: parseFloat((3.3 + Math.random() * 0.7).toFixed(2)),
-            powerSource: 'Battery',
-            device: deviceId,
-            fillLevel: calculateFillLevel(distance)
-        });
-    }
-    
-    return data;
-}
-
-// Export data to CSV
-function exportToCSV() {
-    if (!filteredData.length) {
-        document.getElementById('today-count').textContent = '0';
-        document.getElementById('last-status').textContent = 'NO DATA';
-        document.getElementById('status-distribution').innerHTML = `
-            <div class="text-muted">No data available for today</div>
-        `;
-        return;
-    }
-
-    try {
-        // Header dengan informasi lengkap termasuk yang tidak ditampilkan di tabel
-        const headers = [
-            'Timestamp', 
-            'Distance (cm)', 
-            'Fill Level (%)', 
-            'Status',
-            'Battery (V)',
-            'Power Source',  // Ditambahkan
-            'Device'        // Ditambahkan
-        ];
-        
-        const csvRows = [headers.join(',')];
-
-        filteredData.forEach(item => {
-            const fillLevel = calculateFillLevel(item.distance);
-            const row = [
-                `"${formatTimestamp(item.timestamp)}"`,
-                item.distance?.toFixed?.(1) || '0.0',
-                fillLevel,
-                item.status || 'UNKNOWN',
-                item.batteryVoltage?.toFixed?.(2) || '0.00',
-                item.powerSource || 'Unknown',  // Ditambahkan
-                item.device || 'Unknown'       // Ditambahkan
-            ];
-            csvRows.push(row.join(','));
-        });
-
-        const blob = new Blob([csvRows.join('\n')], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.setAttribute('href', url);
-        link.setAttribute('download', `trash_monitoring_${new Date().toISOString().slice(0, 10)}.csv`);
-        link.style.visibility = 'hidden';
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-    } catch (error) {
-        console.error('Error exporting to CSV:', error);
-        showAlert('Failed to export data', 'danger');
-    }
-}
-
-// Show loading indicator
-function showLoading(show) {
-    const loader = document.getElementById('loading-indicator');
-    if (loader) {
-        loader.style.display = show ? 'block' : 'none';
-    }
-}
-
-// Show error message
-function showError(message) {
-    showAlert(message, 'danger');
-}
-
-// Show alert message
-function showAlert(message, type = 'info') {
-    const alertContainer = document.getElementById('alert-container');
-    if (!alertContainer) return;
-    
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
-    alertDiv.innerHTML = `
-        ${message}
-        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
-    `;
-    
-    alertContainer.prepend(alertDiv);
-    
-    setTimeout(() => {
-        alertDiv.classList.remove('show');
-        setTimeout(() => alertDiv.remove(), 150);
-    }, 5000);
-}
-
-// Event Listeners
-filterForm.addEventListener('submit', e => {
-    e.preventDefault();
     filterData();
-});
-
-filterForm.addEventListener('reset', () => {
-    setTimeout(() => {
-        searchInput.value = '';
-        statusFilter.value = '';
-        dateRangeInput._flatpickr.clear();
-        filterData();
-    }, 0);
-});
-
-prevPageBtn.addEventListener('click', e => {
-    e.preventDefault();
-    if (currentPage > 1) {
-        currentPage--;
-        renderTableRows(filteredData, currentPage);
-        updatePagination(filteredData);
-    }
-});
-
-nextPageBtn.addEventListener('click', e => {
-    e.preventDefault();
-    const totalPages = Math.ceil(filteredData.length / rowsPerPage);
-    if (currentPage < totalPages) {
-        currentPage++;
-        renderTableRows(filteredData, currentPage);
-        updatePagination(filteredData);
-    }
-});
-
-refreshBtn.addEventListener('click', fetchData);
-exportBtn.addEventListener('click', exportToCSV);
-
-// Fungsi untuk mengirim data ke server
-async function sendDataToServer(distance, status, notes = '') {
-    try {
-        const response = await fetch('/api/trash-data', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify({
-                distance,
-                status,
-                notes
-            })
-        });
-
-        const result = await response.json();
-        if (result.success) {
-            const fillLevel = calculateFillLevel(distance);
-            let message = `📤 <b>Data Baru Dikirim</b> 📤\n`;
-            message += `Status: ${status}\n`;
-            message += `Jarak: ${distance.toFixed(1)} cm\n`;
-            message += `Level: ${fillLevel}%\n`;
-            message += `Catatan: ${notes || '-'}`;
-            
-            await sendTelegramNotification(message);
-        } else {
-            console.error('Failed to send data to server');
-        }
-    } catch (error) {
-        console.error('Error sending data:', error);
-    }
+    showLoading(false);
+    isFetching = false;
+  }
 }
 
-// Add this near your other DOM element declarations
-const pauseBtn = document.getElementById("pauseBtn");
-const resumeBtn = document.getElementById("resumeBtn");
-
-// Update checkPauseStatus function
+/**
+ * Cek status pause dari server
+ */
 async function checkPauseStatus() {
   try {
     const res = await fetch(`/api/get-pause-status?device=${ACTIVE_DEVICE}`);
@@ -761,28 +766,21 @@ async function checkPauseStatus() {
   }
 }
 
-const telegramUsers = [
-  {
-    chatId: '5080707943',
-    name: 'Fatony Ahmad Fauzi'
-  },
-  {
-    chatId: '5869060700',
-    name: 'Ahmad Rifai'
-  }
-];
-
-// Ambil status per user dari Firebase
+/**
+ * Ambil status Telegram users dari Firebase
+ */
 async function fetchTelegramUserStatuses() {
   try {
     const container = document.getElementById('telegram-users');
-    container.innerHTML = '<div>Loading...</div>';
+    if (!container) return;
+    
+    container.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm text-success"></div> Loading...</div>';
 
     const endpoint = ACTIVE_DEVICE === 'device1'
       ? '/api/telegram-users-status/device1'
       : '/api/telegram-users-status/device2';
 
-    const response = await fetch(endpoint); // `endpoint` sudah mengandung /api/...
+    const response = await fetch(endpoint);
     const results = await response.json();
 
     if (!response.ok) {
@@ -790,6 +788,12 @@ async function fetchTelegramUserStatuses() {
     }
 
     container.innerHTML = '';
+    
+    if (!results || results.length === 0) {
+      container.innerHTML = '<div class="text-muted">No Telegram users configured</div>';
+      return;
+    }
+    
     results.forEach((user) => {
       const div = document.createElement('div');
       div.className = 'user-info';
@@ -803,223 +807,407 @@ async function fetchTelegramUserStatuses() {
     });
   } catch (err) {
     console.error('Gagal ambil status telegram user:', err);
-    document.getElementById('telegram-users').innerHTML = 
-      '<div class="text-danger">Failed to load status</div>';
-  }
-}
-
-async function sendDiscordNotification(message, device = 'device1') {
-  try {
-    const res = await fetch(`/api/discord-notify`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ message, device })
-    });
-
-    const result = await res.json();
-    return result.success;
-  } catch (error) {
-    console.error('Discord error:', error.message);
-    return false;
-  }
-}
-
-// Update your DOMContentLoaded event listener
-document.addEventListener('DOMContentLoaded', () => {
-  initChart();
-  setTimeout(() => {
-    fetchData();
-    checkPauseStatus();
-    fetchTelegramUserStatuses();
-
-    const notificationMessage = '🌐 <b>Aplikasi Monitoring Dibuka</b> 🌐\nDashboard monitoring tempat sampah telah diakses';
-    const discordMessage = notificationMessage.replace(/<b>/g, '**').replace(/<\/b>/g, '**');
-
-    sendTelegramNotification(notificationMessage, ACTIVE_DEVICE);
-    sendDiscordNotification(discordMessage, ACTIVE_DEVICE);
-    
-  }, 200);
-
-  setInterval(fetchData, 30000);
-  setInterval(checkPauseStatus, 10000);
-  fetchTelegramUserStatuses();
-  setInterval(fetchTelegramUserStatuses, 30000);
-});
-
-// Pada pauseBtn
-pauseBtn.addEventListener("click", async () => {
-  if (!confirm(`Pause pengiriman data dan notifikasi untuk ${ACTIVE_DEVICE}?`)) return;
-  
-  try {
-    showLoading(true);
-    const res = await fetch(`/api/set-pause-status`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        pause: true,
-        device: ACTIVE_DEVICE 
-      })
-    });
-    
-    const result = await res.json();
-    
-    if (result.success) {
-      showAlert(`Data dan notifikasi untuk ${ACTIVE_DEVICE} berhasil dipause`, "success");
-      await checkPauseStatus();
-      updateSummaryCards();
-    } else {
-      showAlert(`Gagal mempause ${ACTIVE_DEVICE}: ` + (result.error || "Unknown error"), "danger");
+    const container = document.getElementById('telegram-users');
+    if (container) {
+      container.innerHTML = '<div class="text-danger">Failed to load user status</div>';
     }
-  } catch (error) {
-    console.error("Error:", error);
-    showAlert(`Terjadi kesalahan saat mempause ${ACTIVE_DEVICE}`, "danger");
-  } finally {
-    showLoading(false);
   }
-});
+}
 
-// Ganti event listener yang lama dengan yang ini di public/js/script.js
-
-resumeBtn.addEventListener("click", async () => {
-  const now = new Date();
-  const lastDataTime = new Date(latestRecord.timestamp || 0);
-  const timeDifference = (now.getTime() - lastDataTime.getTime()) / 1000;
-
-  if (timeDifference > 120) {
-    const deviceName = ACTIVE_DEVICE.toUpperCase();
-    const offlineMessage = `⚠️ Perintah Gagal: Perangkat ${deviceName} sedang OFFLINE.`;
-
-    showAlert(offlineMessage, 'warning');
-
-    const notificationMessage = `❗️ <b>Peringatan Sistem</b> ❗️\nAdmin mencoba me-resume perangkat ${deviceName} yang terdeteksi sedang offline.`;
-    
-    // Memastikan kedua fungsi notifikasi dipanggil dengan argumen yang benar
-    sendTelegramNotification(notificationMessage.replace(/\*\*/g, '<b>'), ACTIVE_DEVICE);
-    sendDiscordNotification(notificationMessage, ACTIVE_DEVICE);
-    
-    console.warn(offlineMessage);
+/**
+ * Export data ke CSV
+ */
+function exportToCSV() {
+  if (!filteredData.length) {
+    showAlert('Tidak ada data untuk di-export', 'warning');
     return;
   }
 
-  // Logika resume jika perangkat online (tidak perlu diubah)
   try {
-    showLoading(true);
-    const res = await fetch(`/api/set-pause-status`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ 
-        pause: false,
-        device: ACTIVE_DEVICE 
-      })
+    // Header dengan informasi lengkap
+    const headers = [
+      'Timestamp', 
+      'Distance (cm)', 
+      'Fill Level (%)', 
+      'Status',
+      'Battery (V)',
+      'Power Source',
+      'Device'
+    ];
+    
+    const csvRows = [headers.join(',')];
+
+    filteredData.forEach(item => {
+      const fillLevel = calculateFillLevel(item.distance);
+      const row = [
+        `"${formatTimestamp(item.timestamp)}"`,
+        item.distance?.toFixed?.(1) || '0.0',
+        fillLevel,
+        item.status || 'UNKNOWN',
+        item.batteryVoltage?.toFixed?.(2) || '0.00',
+        item.powerSource || 'Unknown',
+        item.device || 'Unknown'
+      ];
+      csvRows.push(row.join(','));
     });
-    const result = await res.json();
-    if (result.success) {
-      showAlert(`Data dan notifikasi untuk ${ACTIVE_DEVICE} berhasil dilanjutkan`, "success");
-      await checkPauseStatus();
-      updateSummaryCards();
-    } else {
-      showAlert(`Gagal melanjutkan ${ACTIVE_DEVICE}: ` + (result.error || "Unknown error"), "danger");
-    }
+
+    const blob = new Blob([csvRows.join('\n')], { 
+      type: 'text/csv;charset=utf-8;' 
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `trash_monitoring_${ACTIVE_DEVICE}_${new Date().toISOString().slice(0, 10)}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    
+    showAlert('Data berhasil di-export ke CSV', 'success');
   } catch (error) {
-    console.error("Error:", error);
-    showAlert(`Terjadi kesalahan saat melanjutkan ${ACTIVE_DEVICE}`, "danger");
-  } finally {
-    showLoading(false);
+    console.error('Error exporting to CSV:', error);
+    showAlert('Gagal mengexport data', 'danger');
   }
-});
+}
 
-document.getElementById('delete-all-btn').addEventListener('click', async () => {
-  if (!confirm("Yakin ingin menghapus SEMUA data di Firebase? Tindakan ini tidak dapat dibatalkan!")) return;
+// ========================
+// === SIDEBAR MANAGEMENT ===
+// ========================
 
-  try {
-    showLoading(true);
-    const res = await fetch(`/api/delete-all-data?device=${ACTIVE_DEVICE}`, { 
-      method: 'DELETE',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-    
-    const data = await res.json();
-
-    if (!res.ok) {
-      throw new Error(data.error || 'Gagal menghapus data');
-    }
-
-    showAlert("✅ Semua data berhasil dihapus. Notifikasi telah dikirim ke Telegram & Discord.", "success");
-    
-    // Reset UI
-    allData = [];
-    filteredData = [];
-    renderTableRows([], 1);
-    updatePagination([]);
-    updateChart([]);
-    updateSummaryCards();
-
-  } catch (err) {
-    console.error("Error deleting all data:", err);
-    showAlert(`❌ Gagal menghapus data: ${err.message}`, "danger");
-  } finally {
-    showLoading(false);
-  }
-});
-
-document.addEventListener("DOMContentLoaded", () => {
-  const toggleBtn = document.getElementById('sidebarToggle');
-  const sidebar = document.getElementById('sidebar');
+/**
+ * Inisialisasi sidebar
+ */
+function initSidebar() {
+  if (!sidebar || !sidebarToggle) return;
   
-  if (toggleBtn && sidebar) {
-    toggleBtn.addEventListener('click', (e) => {
-      e.preventDefault();
-      const isExpanded = toggleBtn.getAttribute('aria-expanded') === 'true';
-      toggleBtn.setAttribute('aria-expanded', !isExpanded);
-      
-      sidebar.classList.toggle('active');
-      
-      // Tambahkan overlay di mobile
-      if (window.innerWidth <= 768) {
-        const overlay = document.createElement('div');
-        overlay.id = 'sidebar-overlay';
-        overlay.style.position = 'fixed';
-        overlay.style.top = '56px'; // Sesuaikan dengan tinggi navbar
-        overlay.style.left = '0';
-        overlay.style.right = '0';
-        overlay.style.bottom = '0';
-        overlay.style.backgroundColor = 'rgba(0,0,0,0.5)';
-        overlay.style.zIndex = '999';
-        overlay.addEventListener('click', () => {
-          sidebar.classList.remove('active');
-          overlay.remove();
-        });
-        
-        if (sidebar.classList.contains('active')) {
-          document.body.appendChild(overlay);
-        } else {
-          const existingOverlay = document.getElementById('sidebar-overlay');
-          if (existingOverlay) existingOverlay.remove();
-        }
-      }
-    });
+  // Buat overlay element
+  const overlay = document.createElement('div');
+  overlay.id = 'sidebar-overlay';
+  document.body.appendChild(overlay);
+  
+  // Toggle sidebar
+  sidebarToggle.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     
-    // Tutup sidebar saat resize ke desktop
-    window.addEventListener('resize', () => {
-      if (window.innerWidth >= 768) {
-        sidebar.classList.remove('active');
-        const overlay = document.getElementById('sidebar-overlay');
-        if (overlay) overlay.remove();
+    isSidebarActive = !isSidebarActive;
+    sidebar.classList.toggle('active');
+    overlay.style.display = isSidebarActive ? 'block' : 'none';
+    sidebarToggle.setAttribute('aria-expanded', isSidebarActive);
+    
+    // Update icon
+    const icon = sidebarToggle.querySelector('i');
+    if (icon) {
+      icon.className = isSidebarActive ? 'bi bi-x-lg' : 'bi bi-list';
+    }
+  });
+  
+  // Tutup sidebar saat overlay diklik
+  overlay.addEventListener('click', () => {
+    sidebar.classList.remove('active');
+    overlay.style.display = 'none';
+    isSidebarActive = false;
+    sidebarToggle.setAttribute('aria-expanded', 'false');
+    
+    const icon = sidebarToggle.querySelector('i');
+    if (icon) {
+      icon.className = 'bi bi-list';
+    }
+  });
+  
+  // Tutup sidebar saat tekan ESC
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && isSidebarActive) {
+      sidebar.classList.remove('active');
+      overlay.style.display = 'none';
+      isSidebarActive = false;
+      sidebarToggle.setAttribute('aria-expanded', 'false');
+      
+      const icon = sidebarToggle.querySelector('i');
+      if (icon) {
+        icon.className = 'bi bi-list';
       }
-    });
-  }
-
-  // Kode yang sudah ada...
+    }
+  });
+  
+  // Tutup sidebar saat resize ke desktop
+  window.addEventListener('resize', () => {
+    if (window.innerWidth >= 768) {
+      sidebar.classList.remove('active');
+      overlay.style.display = 'none';
+      isSidebarActive = false;
+      sidebarToggle.setAttribute('aria-expanded', 'false');
+      
+      const icon = sidebarToggle.querySelector('i');
+      if (icon) {
+        icon.className = 'bi bi-list';
+      }
+    }
+  });
+  
+  // Highlight menu aktif
   const path = window.location.pathname;
   document.querySelectorAll('.device-link').forEach(link => {
     if (path.includes(link.getAttribute('href'))) {
       link.classList.add('active');
     }
   });
+}
+
+// ========================
+// === EVENT LISTENERS ===
+// ========================
+
+/**
+ * Setup semua event listeners
+ */
+function setupEventListeners() {
+  // Filter form
+  if (filterForm) {
+    filterForm.addEventListener('submit', e => {
+      e.preventDefault();
+      filterData();
+    });
+
+    filterForm.addEventListener('reset', () => {
+      setTimeout(() => {
+        searchInput.value = '';
+        statusFilter.value = '';
+        if (dateRangeInput._flatpickr) {
+          dateRangeInput._flatpickr.clear();
+        }
+        filterData();
+      }, 0);
+    });
+  }
+
+  // Pagination
+  if (prevPageBtn) {
+    prevPageBtn.addEventListener('click', e => {
+      e.preventDefault();
+      if (currentPage > 1) {
+        currentPage--;
+        renderTableRows(filteredData, currentPage);
+        updatePagination(filteredData);
+      }
+    });
+  }
+
+  if (nextPageBtn) {
+    nextPageBtn.addEventListener('click', e => {
+      e.preventDefault();
+      const totalPages = Math.ceil(filteredData.length / rowsPerPage);
+      if (currentPage < totalPages) {
+        currentPage++;
+        renderTableRows(filteredData, currentPage);
+        updatePagination(filteredData);
+      }
+    });
+  }
+
+  // Refresh button
+  if (refreshBtn) {
+    refreshBtn.addEventListener('click', fetchData);
+  }
+
+  // Export button
+  if (exportBtn) {
+    exportBtn.addEventListener('click', exportToCSV);
+  }
+
+  // Delete all button
+  if (deleteAllBtn) {
+    deleteAllBtn.addEventListener('click', async () => {
+      if (!confirm("Yakin ingin menghapus SEMUA data di Firebase? Tindakan ini tidak dapat dibatalkan!")) return;
+
+      try {
+        showLoading(true);
+        const res = await fetch(`/api/delete-all-data?device=${ACTIVE_DEVICE}`, { 
+          method: 'DELETE',
+          headers: {
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        const data = await res.json();
+
+        if (!res.ok) {
+          throw new Error(data.error || 'Gagal menghapus data');
+        }
+
+        showAlert("✅ Semua data berhasil dihapus. Notifikasi telah dikirim ke Telegram & Discord.", "success");
+        
+        // Reset UI
+        allData = [];
+        filteredData = [];
+        renderTableRows([], 1);
+        updatePagination([]);
+        updateChart([]);
+        updateSummaryCards();
+
+      } catch (err) {
+        console.error("Error deleting all data:", err);
+        showAlert(`❌ Gagal menghapus data: ${err.message}`, "danger");
+      } finally {
+        showLoading(false);
+      }
+    });
+  }
+
+  // Pause button
+  if (pauseBtn) {
+    pauseBtn.addEventListener("click", async () => {
+      if (!confirm(`Pause pengiriman data dan notifikasi untuk ${ACTIVE_DEVICE}?`)) return;
+      
+      try {
+        showLoading(true);
+        const res = await fetch(`/api/set-pause-status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            pause: true,
+            device: ACTIVE_DEVICE 
+          })
+        });
+        
+        const result = await res.json();
+        
+        if (result.success) {
+          showAlert(`Data dan notifikasi untuk ${ACTIVE_DEVICE} berhasil dipause`, "success");
+          await checkPauseStatus();
+          updateSummaryCards();
+        } else {
+          showAlert(`Gagal mempause ${ACTIVE_DEVICE}: ` + (result.error || "Unknown error"), "danger");
+        }
+      } catch (error) {
+        console.error("Error:", error);
+        showAlert(`Terjadi kesalahan saat mempause ${ACTIVE_DEVICE}`, "danger");
+      } finally {
+        showLoading(false);
+      }
+    });
+  }
+
+  // Resume button
+  if (resumeBtn) {
+    resumeBtn.addEventListener("click", async () => {
+      const now = new Date();
+      const lastDataTime = new Date(latestRecord.timestamp || 0);
+      const timeDifference = (now.getTime() - lastDataTime.getTime()) / 1000;
+
+      if (timeDifference > 120) {
+        const deviceName = ACTIVE_DEVICE.toUpperCase();
+        const offlineMessage = `⚠️ Perintah Gagal: Perangkat ${deviceName} sedang OFFLINE.`;
+
+        showAlert(offlineMessage, 'warning');
+
+        const notificationMessage = `❗️ <b>Peringatan Sistem</b> ❗️\nAdmin mencoba me-resume perangkat ${deviceName} yang terdeteksi sedang offline.`;
+        
+        sendTelegramNotification(notificationMessage.replace(/\*\*/g, '<b>'), ACTIVE_DEVICE);
+        sendDiscordNotification(notificationMessage, ACTIVE_DEVICE);
+        
+        console.warn(offlineMessage);
+        return;
+      }
+
+      // Resume jika perangkat online
+      try {
+        showLoading(true);
+        const res = await fetch(`/api/set-pause-status`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ 
+            pause: false,
+            device: ACTIVE_DEVICE 
+          })
+        });
+        
+        const result = await res.json();
+        
+        if (result.success) {
+          showAlert(`Data dan notifikasi untuk ${ACTIVE_DEVICE} berhasil dilanjutkan`, "success");
+          await checkPauseStatus();
+          updateSummaryCards();
+        } else {
+          showAlert(`Gagal melanjutkan ${ACTIVE_DEVICE}: ` + (result.error || "Unknown error"), "danger");
+        }
+      } catch (error) {
+        console.error("Error:", error);
+        showAlert(`Terjadi kesalahan saat melanjutkan ${ACTIVE_DEVICE}`, "danger");
+      } finally {
+        showLoading(false);
+      }
+    });
+  }
+}
+
+// ========================
+// === INITIALIZATION ===
+// ========================
+
+/**
+ * Inisialisasi aplikasi
+ */
+function initApp() {
+  // Set tahun di footer
+  if (currentYear) {
+    currentYear.textContent = new Date().getFullYear();
+  }
+  
+  // Inisialisasi chart
+  initChart();
+  
+  // Inisialisasi sidebar
+  initSidebar();
+  
+  // Setup event listeners
+  setupEventListeners();
+  
+  // Load initial data setelah delay kecil
+  setTimeout(() => {
+    fetchData();
+    checkPauseStatus();
+    fetchTelegramUserStatuses();
+    
+    // Kirim notifikasi aplikasi dibuka
+    const notificationMessage = '🌐 <b>Aplikasi Monitoring Dibuka</b> 🌐\nDashboard monitoring tempat sampah telah diakses';
+    const discordMessage = notificationMessage.replace(/<b>/g, '**').replace(/<\/b>/g, '**');
+    
+    sendTelegramNotification(notificationMessage, ACTIVE_DEVICE);
+    sendDiscordNotification(discordMessage, ACTIVE_DEVICE);
+    
+  }, 500);
+  
+  // Setup auto-refresh
+  setInterval(fetchData, 30000); // 30 detik
+  setInterval(checkPauseStatus, 10000); // 10 detik
+  setInterval(fetchTelegramUserStatuses, 30000); // 30 detik
+}
+
+// ========================
+// === START APPLICATION ===
+// ========================
+
+// Tunggu DOM siap sepenuhnya
+document.addEventListener('DOMContentLoaded', initApp);
+
+// Handle page visibility untuk optimasi
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    // Refresh data saat tab aktif kembali
+    fetchData();
+    checkPauseStatus();
+  }
 });
 
-document.getElementById("currentYear").textContent = new Date().getFullYear();
+// Error handling global
+window.addEventListener('error', function(event) {
+  console.error('Global error:', event.error);
+  showAlert(`Terjadi kesalahan: ${event.message}`, 'danger');
+});
+
+// Unhandled promise rejection
+window.addEventListener('unhandledrejection', function(event) {
+  console.error('Unhandled promise rejection:', event.reason);
+  showAlert(`Terjadi kesalahan dalam operasi: ${event.reason}`, 'danger');
+});
