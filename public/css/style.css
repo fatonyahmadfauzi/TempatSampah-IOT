@@ -688,3 +688,44 @@ footer {
     border: 1px solid #ddd !important;
   }
 }
+
+/* ======================== */
+/* === Empty States === */
+/* ======================== */
+.empty-state {
+  text-align: center;
+  padding: 3rem 1rem;
+  color: #6c757d;
+}
+
+.empty-state i {
+  font-size: 3rem;
+  margin-bottom: 1rem;
+  opacity: 0.5;
+}
+
+.empty-state h5 {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+}
+
+.empty-state p {
+  font-size: 0.9rem;
+  max-width: 300px;
+  margin: 0 auto;
+}
+
+/* Loading states */
+#initial-loading td {
+  background-color: transparent !important;
+}
+
+/* Error states */
+.text-danger i {
+  color: #dc3545;
+}
+
+/* Success states */
+.text-success i {
+  color: var(--hijau-tua);
+}

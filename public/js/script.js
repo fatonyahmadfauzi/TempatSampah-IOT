@@ -10,6 +10,10 @@ let fillChart = null;
 let isFetching = false;
 let latestRecord = {};
 let isSidebarActive = false;
+let refreshInterval = null;
+
+// Timeout configuration
+const FETCH_TIMEOUT = 10000; // 10 detik
 
 // ========================
 // === DOM ELEMENTS ===
@@ -32,21 +36,27 @@ const sidebarToggle = document.getElementById('sidebarToggle');
 const sidebar = document.getElementById('sidebar');
 const currentYear = document.getElementById('currentYear');
 
-// Telegram users configuration
-const telegramUsers = [
-  {
-    chatId: '5080707943',
-    name: 'Fatony Ahmad Fauzi'
-  },
-  {
-    chatId: '5869060700',
-    name: 'Ahmad Rifai'
-  }
-];
-
 // ========================
 // === UTILITY FUNCTIONS ===
 // ========================
+
+/**
+ * Fetch dengan timeout
+ */
+async function fetchWithTimeout(resource, options = {}) {
+  const { timeout = FETCH_TIMEOUT } = options;
+  
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeout);
+  
+  const response = await fetch(resource, {
+    ...options,
+    signal: controller.signal  
+  });
+  
+  clearTimeout(id);
+  return response;
+}
 
 /**
  * Menampilkan loading indicator
@@ -54,15 +64,14 @@ const telegramUsers = [
 function showLoading(show) {
   const loader = document.getElementById('loading-indicator');
   if (loader) {
-    loader.style.display = show ? 'block' : 'none';
+    loader.style.display = show ? 'flex' : 'none';
   }
   
-  // Juga disable/enable tombol saat loading
-  if (refreshBtn) refreshBtn.disabled = show;
-  if (exportBtn) exportBtn.disabled = show;
-  if (deleteAllBtn) deleteAllBtn.disabled = show;
-  if (pauseBtn) pauseBtn.disabled = show;
-  if (resumeBtn) resumeBtn.disabled = show;
+  // Disable tombol saat loading
+  const buttons = [refreshBtn, exportBtn, deleteAllBtn, pauseBtn, resumeBtn];
+  buttons.forEach(btn => {
+    if (btn) btn.disabled = show;
+  });
 }
 
 /**
@@ -102,7 +111,7 @@ function showAlert(message, type = 'info') {
  */
 function formatTimestamp(raw) {
   try {
-    if (!raw) return 'Invalid Time';
+    if (!raw) return '-';
     
     let date;
     if (typeof raw === 'string') {
@@ -122,7 +131,7 @@ function formatTimestamp(raw) {
 
     if (isNaN(date.getTime())) {
       console.warn('Invalid date:', raw);
-      return 'Invalid Time';
+      return '-';
     }
 
     // Format tanggal dan waktu dengan timezone Jakarta
@@ -144,7 +153,43 @@ function formatTimestamp(raw) {
     return `${dateStr} ${timeStr}`;
   } catch (e) {
     console.error('Error formatting timestamp:', e);
-    return 'Invalid Time';
+    return '-';
+  }
+}
+
+/**
+ * Format waktu singkat untuk chart
+ */
+function formatTimeForChart(raw) {
+  try {
+    if (!raw) return '';
+    
+    let date;
+    if (typeof raw === 'string') {
+      const fixedTimestamp = raw
+        .replace(/(T\d{2}:\d{2}:\d{2})\d/, '$1')
+        .replace(/Z?$/, '');
+      date = new Date(fixedTimestamp);
+      
+      if (isNaN(date.getTime())) {
+        date = new Date(raw);
+      }
+    } else {
+      date = new Date(raw);
+    }
+
+    if (isNaN(date.getTime())) {
+      return '';
+    }
+
+    return date.toLocaleTimeString('id-ID', {
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+      timeZone: 'Asia/Jakarta'
+    }).replace(/\./g, ':');
+  } catch (e) {
+    return '';
   }
 }
 
@@ -177,6 +222,14 @@ function getStatusClass(status) {
 }
 
 /**
+ * Mendapatkan class badge untuk status
+ */
+function getStatusBadgeClass(status) {
+  const normalized = normalizeStatus(status);
+  return `status-${normalized}`;
+}
+
+/**
  * Menghitung fill level berdasarkan jarak
  */
 function calculateFillLevel(distance) {
@@ -205,6 +258,19 @@ function getBatteryStatus(voltage) {
     status: 'Kritis',
     class: 'text-danger'
   };
+}
+
+/**
+ * Deteksi apakah device offline
+ */
+function isDeviceOffline() {
+  if (!latestRecord || !latestRecord.timestamp) return true;
+  
+  const now = new Date();
+  const lastDataTime = new Date(latestRecord.timestamp);
+  const timeDifference = (now.getTime() - lastDataTime.getTime()) / 1000;
+  
+  return timeDifference > 120; // Offline jika > 2 menit
 }
 
 /**
@@ -302,7 +368,15 @@ function initChart() {
  * Update chart dengan data baru
  */
 function updateChart(data) {
-  if (!fillChart || !data || data.length === 0) return;
+  if (!fillChart) return;
+  
+  if (!data || data.length === 0) {
+    // Clear chart jika tidak ada data
+    fillChart.data.labels = [];
+    fillChart.data.datasets[0].data = [];
+    fillChart.update();
+    return;
+  }
   
   // Ambil 20 data terbaru
   const chartData = data.slice(0, 20);
@@ -310,37 +384,7 @@ function updateChart(data) {
   // Reverse untuk urutan waktu yang benar (lama ke baru)
   const reversedData = [...chartData].reverse();
   
-  fillChart.data.labels = reversedData.map(item => {
-    try {
-      let date;
-      if (typeof item.timestamp === 'string') {
-        const fixedTimestamp = item.timestamp
-          .replace(/(T\d{2}:\d{2}:\d{2})\d/, '$1')
-          .replace(/Z?$/, '');
-        date = new Date(fixedTimestamp);
-        
-        if (isNaN(date.getTime())) {
-          date = new Date(item.timestamp);
-        }
-      } else {
-        date = new Date(item.timestamp);
-      }
-
-      if (isNaN(date.getTime())) {
-        return 'Invalid Time';
-      }
-
-      return date.toLocaleTimeString('id-ID', {
-        hour: '2-digit',
-        minute: '2-digit',
-        hour12: false,
-        timeZone: 'Asia/Jakarta'
-      }).replace(/\./g, ':');
-    } catch (e) {
-      return 'Invalid Time';
-    }
-  });
-
+  fillChart.data.labels = reversedData.map(item => formatTimeForChart(item.timestamp));
   fillChart.data.datasets[0].data = reversedData.map(item => calculateFillLevel(item.distance));
   fillChart.update();
 }
@@ -351,6 +395,12 @@ function updateChart(data) {
 function renderTableRows(data, page) {
   if (!tableBody) return;
   
+  // Sembunyikan initial loading
+  const initialLoading = document.getElementById('initial-loading');
+  if (initialLoading) {
+    initialLoading.style.display = 'none';
+  }
+  
   tableBody.innerHTML = '';
   const start = (page - 1) * rowsPerPage;
   const end = start + rowsPerPage;
@@ -358,12 +408,30 @@ function renderTableRows(data, page) {
 
   if (paginatedData.length === 0) {
     const tr = document.createElement("tr");
-    tr.innerHTML = `<td colspan="5" class="text-center py-4">Tidak ada data yang tersedia</td>`;
+    tr.className = 'empty-state-row';
+    tr.innerHTML = `
+      <td colspan="5" class="text-center py-5">
+        <div class="empty-state">
+          <i class="bi bi-database-slash fs-1 text-muted"></i>
+          <h5 class="text-muted">Tidak Ada Data</h5>
+          <p class="small text-muted mb-3">Belum ada data yang tersimpan di database</p>
+          <button id="refresh-manual" class="btn btn-sm btn-outline-success">
+            <i class="bi bi-arrow-clockwise"></i> Muat Ulang Data
+          </button>
+        </div>
+      </td>
+    `;
     tableBody.appendChild(tr);
+    
+    // Add event listener untuk refresh manual
+    setTimeout(() => {
+      document.getElementById('refresh-manual')?.addEventListener('click', fetchData);
+    }, 100);
+    
     return;
   }
 
-  paginatedData.forEach(item => {
+  paginatedData.forEach((item, index) => {
     const tr = document.createElement("tr");
     tr.className = 'fade-in';
     
@@ -412,6 +480,11 @@ function updatePagination(data) {
   prevPageBtn.parentElement.classList.toggle('disabled', currentPage <= 1);
   nextPageBtn.parentElement.classList.toggle('disabled', currentPage >= totalPages);
   currentPageSpan.textContent = currentPage;
+  
+  // Update aria labels
+  prevPageBtn.setAttribute('aria-label', `Previous page, current page ${currentPage} of ${totalPages}`);
+  nextPageBtn.setAttribute('aria-label', `Next page, current page ${currentPage} of ${totalPages}`);
+  currentPageSpan.setAttribute('aria-label', `Page ${currentPage} of ${totalPages}`);
 }
 
 /**
@@ -434,18 +507,17 @@ function filterData() {
       const validItem = {
         timestamp: item.timestamp || '',
         distance: item.distance ?? 0,
-        status: item.status || 'UNKNOWN',
-        notes: item.notes || '',
+        status: normalizeStatus(item.status),
         batteryVoltage: item.batteryVoltage || 0,
+        powerSource: item.powerSource || 'Battery',
         device: item.device || ''
       };
 
       // Filter pencarian
-      const matchesSearch = 
+      const matchesSearch = searchTerm === '' || 
         String(validItem.timestamp).toLowerCase().includes(searchTerm) ||
         String(validItem.distance).includes(searchTerm) ||
         validItem.status.toLowerCase().includes(searchTerm) ||
-        validItem.notes.toLowerCase().includes(searchTerm) ||
         validItem.device.toLowerCase().includes(searchTerm);
 
       // Filter status
@@ -455,15 +527,18 @@ function filterData() {
       let matchesDate = true;
       if (dateRange) {
         try {
-          const [start, end] = dateRange.split(' to ');
-          const itemDate = new Date(validItem.timestamp);
-          const startDate = new Date(start);
-          const endDate = new Date(end);
-          
-          // Set waktu untuk end date ke akhir hari
-          endDate.setHours(23, 59, 59, 999);
-          
-          matchesDate = itemDate >= startDate && itemDate <= endDate;
+          const dates = dateRange.split(' to ');
+          if (dates.length === 2) {
+            const [start, end] = dates;
+            const itemDate = new Date(validItem.timestamp);
+            const startDate = new Date(start);
+            const endDate = new Date(end);
+            
+            // Set waktu untuk end date ke akhir hari
+            endDate.setHours(23, 59, 59, 999);
+            
+            matchesDate = itemDate >= startDate && itemDate <= endDate;
+          }
         } catch (e) {
           console.error('Error filtering date:', e);
         }
@@ -472,8 +547,15 @@ function filterData() {
       return matchesSearch && matchesStatus && matchesDate;
     });
 
-    // Urutkan descending berdasarkan timestamp
-    filteredData.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    // Urutkan descending berdasarkan timestamp (terbaru dulu)
+    filteredData.sort((a, b) => {
+      const dateA = new Date(a.timestamp || 0);
+      const dateB = new Date(b.timestamp || 0);
+      return dateB - dateA;
+    });
+    
+    // Update latest record
+    latestRecord = filteredData[0] || {};
     
     currentPage = 1;
     renderTableRows(filteredData, currentPage);
@@ -506,65 +588,74 @@ function updateSummaryCards() {
   const deviceId = document.getElementById('device-id');
 
   if (!filteredData.length) {
-    // Tampilkan data default jika tidak ada data
+    // Tampilkan UI "Tidak Ada Data"
     if (currentStatusBadge) {
       currentStatusBadge.textContent = 'NO DATA';
       currentStatusBadge.className = 'status-badge bg-secondary';
     }
     
-    if (currentDistance) currentDistance.textContent = '0.0 cm';
+    if (currentDistance) currentDistance.textContent = '- cm';
     if (fillProgress) {
       fillProgress.style.width = '0%';
       fillProgress.setAttribute('aria-valuenow', '0');
       fillProgress.textContent = '0%';
+      fillProgress.className = 'progress-bar bg-secondary';
     }
-    if (lastUpdate) lastUpdate.textContent = 'N/A';
+    if (lastUpdate) lastUpdate.textContent = '-';
     if (todayCount) todayCount.textContent = '0';
-    if (lastStatus) lastStatus.textContent = 'NO DATA';
-    if (statusDistribution) statusDistribution.innerHTML = `<div class="text-muted">Tidak ada data yang tersedia</div>`;
-    
-    // Set status device ke OFFLINE
-    if (deviceStatusElement) {
-      deviceStatusElement.textContent = 'OFFLINE';
-      deviceStatusElement.className = 'text-muted fw-bold';
+    if (lastStatus) lastStatus.textContent = '-';
+    if (statusDistribution) {
+      statusDistribution.innerHTML = `
+        <div class="text-center text-muted py-2">
+          <i class="bi bi-database me-1"></i>
+          Tidak ada data untuk ditampilkan
+        </div>
+      `;
     }
-    if (deviceIconElement) deviceIconElement.className = 'bi bi-wifi-off fs-1 text-muted';
-    if (deviceId) deviceId.textContent = 'OFFLINE';
+    
+    // Set status device
+    const isPaused = pauseBtn && pauseBtn.classList.contains("disabled");
+    if (deviceStatusElement) {
+      deviceStatusElement.textContent = isPaused ? 'PAUSED' : 'NO DATA';
+      deviceStatusElement.className = isPaused ? 'text-danger fw-bold' : 'text-muted fw-bold';
+    }
+    if (deviceIconElement) {
+      deviceIconElement.className = isPaused ? 
+        'bi bi-pause-circle fs-1 text-danger' : 
+        'bi bi-database fs-1 text-muted';
+    }
+    if (deviceId) deviceId.textContent = ACTIVE_DEVICE.toUpperCase();
     
     // Battery info
-    if (batteryStatusIcon) batteryStatusIcon.className = 'bi bi-battery fs-1 text-danger';
+    if (batteryStatusIcon) batteryStatusIcon.className = 'bi bi-battery fs-1 text-muted';
     if (batteryVoltage) batteryVoltage.textContent = '0.00V';
     if (powerSource) powerSource.textContent = 'Unknown';
-    if (batteryLastReading) batteryLastReading.textContent = 'Last reading: N/A';
+    if (batteryLastReading) batteryLastReading.textContent = 'Last reading: -';
     
     return;
   }
 
+  // Ada data, update dengan data terbaru
   latestRecord = filteredData[0] || {};
   const fillLevel = calculateFillLevel(latestRecord.distance || 0);
+  const currentStatus = normalizeStatus(latestRecord.status);
 
-  // Deteksi status device: OFFLINE, PAUSED, atau STREAMING
-  const now = new Date();
-  const lastDataTime = new Date(latestRecord.timestamp || 0);
-  const timeDifference = (now.getTime() - lastDataTime.getTime()) / 1000;
+  // Deteksi status device
+  const isOffline = isDeviceOffline();
   const isPaused = pauseBtn && pauseBtn.classList.contains("disabled");
-
-  let deviceStatus = 'OFFLINE';
-  let deviceStatusClass = 'text-muted fw-bold';
-  let deviceIconClass = 'bi bi-wifi-off fs-1 text-muted';
   
-  if (timeDifference > 120) { // Lebih dari 2 menit
+  let deviceStatus = 'STREAMING';
+  let deviceStatusClass = 'text-success fw-bold';
+  let deviceIconClass = 'bi bi-play-circle fs-1 text-success';
+  
+  if (isOffline) {
     deviceStatus = 'OFFLINE';
-    deviceStatusClass = 'text-muted fw-bold';
-    deviceIconClass = 'bi bi-wifi-off fs-1 text-muted';
+    deviceStatusClass = 'text-danger fw-bold';
+    deviceIconClass = 'bi bi-wifi-off fs-1 text-danger';
   } else if (isPaused) {
     deviceStatus = 'PAUSED';
-    deviceStatusClass = 'text-danger fw-bold';
-    deviceIconClass = 'bi bi-pause-circle fs-1 text-danger';
-  } else {
-    deviceStatus = 'STREAMING';
-    deviceStatusClass = 'text-success fw-bold';
-    deviceIconClass = 'bi bi-play-circle fs-1 text-success';
+    deviceStatusClass = 'text-warning fw-bold';
+    deviceIconClass = 'bi bi-pause-circle fs-1 text-warning';
   }
 
   if (deviceStatusElement) {
@@ -574,10 +665,9 @@ function updateSummaryCards() {
   if (deviceIconElement) deviceIconElement.className = deviceIconClass;
 
   // Update kartu lainnya
-  const currentStatus = latestRecord.status || 'UNKNOWN';
   if (currentStatusBadge) {
     currentStatusBadge.textContent = currentStatus;
-    currentStatusBadge.className = `status-badge status-${currentStatus}`;
+    currentStatusBadge.className = `status-badge ${getStatusBadgeClass(currentStatus)}`;
   }
   
   if (currentDistance) currentDistance.textContent = `${(latestRecord.distance || 0).toFixed(1)} cm`;
@@ -590,7 +680,7 @@ function updateSummaryCards() {
     fillProgress.textContent = `${fillLevel}%`;
   }
   
-  if (lastUpdate) lastUpdate.textContent = formatTimestamp(latestRecord.timestamp || new Date().toISOString());
+  if (lastUpdate) lastUpdate.textContent = formatTimestamp(latestRecord.timestamp);
 
   // Hitung data hari ini
   const todayData = filteredData.filter(item => {
@@ -616,23 +706,31 @@ function updateSummaryCards() {
   const total = todayData.length;
   let distributionHTML = '';
   
-  Object.entries(statusCounts).forEach(([status, count]) => {
-    const percentage = total > 0 ? Math.round((count / total) * 100) : 0;
-    const statusClass = getStatusClass(status);
-    distributionHTML += `
-      <div class="d-flex justify-content-between align-items-center mb-1">
-        <span>${status}</span>
-        <span class="${statusClass}">${count} (${percentage}%)</span>
-      </div>
-      <div class="progress mb-2" style="height: 5px;">
-        <div class="progress-bar ${statusClass}" style="width: ${percentage}%"></div>
+  if (total > 0) {
+    Object.entries(statusCounts).forEach(([status, count]) => {
+      const percentage = Math.round((count / total) * 100);
+      const statusClass = getStatusClass(status);
+      distributionHTML += `
+        <div class="d-flex justify-content-between align-items-center mb-1">
+          <span>${status}</span>
+          <span class="${statusClass}">${count} (${percentage}%)</span>
+        </div>
+        <div class="progress mb-2" style="height: 5px;">
+          <div class="progress-bar ${statusClass}" style="width: ${percentage}%"></div>
+        </div>
+      `;
+    });
+  } else {
+    distributionHTML = `
+      <div class="text-center text-muted py-2">
+        <i class="bi bi-calendar-x me-1"></i>
+        Tidak ada data untuk hari ini
       </div>
     `;
-  });
+  }
   
   if (statusDistribution) {
-    statusDistribution.innerHTML = distributionHTML || 
-      `<div class="text-muted">Tidak ada data untuk hari ini</div>`;
+    statusDistribution.innerHTML = distributionHTML;
   }
 
   // Battery info
@@ -641,7 +739,7 @@ function updateSummaryCards() {
   if (batteryVoltage) batteryVoltage.textContent = `${(latestRecord.batteryVoltage || 0).toFixed(2)}V`;
   if (powerSource) powerSource.textContent = latestRecord.powerSource || 'Battery';
   if (batteryLastReading) {
-    batteryLastReading.textContent = `Last reading: ${formatTimestamp(latestRecord.timestamp || new Date().toISOString())}`;
+    batteryLastReading.textContent = `Last reading: ${formatTimestamp(latestRecord.timestamp)}`;
   }
   
   if (deviceId) deviceId.textContent = latestRecord.device || ACTIVE_DEVICE.toUpperCase();
@@ -652,7 +750,7 @@ function updateSummaryCards() {
  */
 async function sendTelegramNotification(message, device = ACTIVE_DEVICE) {
   try {
-    const res = await fetch(`/api/telegram-notify`, {
+    const res = await fetchWithTimeout(`/api/telegram-notify`, {
       method: 'POST',
       headers: { 
         'Content-Type': 'application/json',
@@ -660,7 +758,8 @@ async function sendTelegramNotification(message, device = ACTIVE_DEVICE) {
       body: JSON.stringify({ 
         message,
         device
-      })
+      }),
+      timeout: 5000
     });
     
     if (!res.ok) {
@@ -679,12 +778,13 @@ async function sendTelegramNotification(message, device = ACTIVE_DEVICE) {
  */
 async function sendDiscordNotification(message, device = ACTIVE_DEVICE) {
   try {
-    const res = await fetch(`/api/discord-notify`, {
+    const res = await fetchWithTimeout(`/api/discord-notify`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
       },
-      body: JSON.stringify({ message, device })
+      body: JSON.stringify({ message, device }),
+      timeout: 5000
     });
 
     const result = await res.json();
@@ -699,39 +799,78 @@ async function sendDiscordNotification(message, device = ACTIVE_DEVICE) {
  * Fetch data dari server
  */
 async function fetchData() {
-  if (isFetching) return;
+  if (isFetching) {
+    console.log('⚠️ Fetch already in progress, skipping...');
+    return;
+  }
   
   try {
     isFetching = true;
     showLoading(true);
     
-    const response = await fetch(`/api/trash-data?device=${ACTIVE_DEVICE}`);
+    console.log(`🔄 Fetching data for ${ACTIVE_DEVICE}...`);
+    
+    const response = await fetchWithTimeout(`/api/trash-data?device=${ACTIVE_DEVICE}`, {
+      timeout: FETCH_TIMEOUT
+    });
     
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`Server error: ${response.status} ${response.statusText}`);
     }
 
     const result = await response.json();
+    console.log('📦 API Response:', result);
 
     if (result?.success) {
       if (Array.isArray(result.data) && result.data.length > 0) {
         allData = result.data;
+        console.log(`✅ Loaded ${allData.length} records from database`);
+        
+        // Start auto-refresh jika ada data
+        startAutoRefresh();
       } else {
-        console.warn('API returned empty or invalid data');
+        console.log('📭 Database kosong - tidak ada data');
         allData = [];
+        
+        // Stop auto-refresh jika tidak ada data
+        stopAutoRefresh();
+        
+        // Hanya tampilkan alert pertama kali
+        if (filteredData.length > 0) {
+          showAlert('Database sekarang kosong', 'info');
+        }
       }
     } else {
-      throw new Error(result.error || 'API returned an error');
+      throw new Error(result?.error || 'Invalid response format from server');
     }
 
   } catch (error) {
-    console.error('Fetch error:', error);
-    showAlert(`Gagal memuat data dari server: ${error.message}`, 'danger');
+    console.error('❌ Fetch error:', error);
+    
+    if (error.name === 'AbortError') {
+      showAlert('⚠️ Timeout: Server tidak merespons dalam 10 detik', 'warning');
+    } else if (error.message.includes('Failed to fetch')) {
+      showAlert('🌐 Gagal terhubung ke server. Periksa koneksi internet.', 'danger');
+    } else {
+      showAlert(`❌ ${error.message}`, 'danger');
+    }
+    
     allData = [];
+    stopAutoRefresh();
   } finally {
+    // Sembunyikan initial loading di tabel
+    const initialLoading = document.getElementById('initial-loading');
+    if (initialLoading) {
+      initialLoading.style.display = 'none';
+    }
+    
     filterData();
     showLoading(false);
-    isFetching = false;
+    
+    // Reset fetching flag dengan delay kecil
+    setTimeout(() => {
+      isFetching = false;
+    }, 500);
   }
 }
 
@@ -740,7 +879,9 @@ async function fetchData() {
  */
 async function checkPauseStatus() {
   try {
-    const res = await fetch(`/api/get-pause-status?device=${ACTIVE_DEVICE}`);
+    const res = await fetchWithTimeout(`/api/get-pause-status?device=${ACTIVE_DEVICE}`, {
+      timeout: 5000
+    });
     
     if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
     
@@ -762,7 +903,6 @@ async function checkPauseStatus() {
     }
   } catch (error) {
     console.error("Error checking pause status:", error);
-    showAlert("Failed to check pause status", "danger");
   }
 }
 
@@ -774,42 +914,41 @@ async function fetchTelegramUserStatuses() {
     const container = document.getElementById('telegram-users');
     if (!container) return;
     
-    container.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm text-success"></div> Loading...</div>';
-
     const endpoint = ACTIVE_DEVICE === 'device1'
       ? '/api/telegram-users-status/device1'
       : '/api/telegram-users-status/device2';
 
-    const response = await fetch(endpoint);
-    const results = await response.json();
-
+    const response = await fetchWithTimeout(endpoint, { timeout: 5000 });
+    
     if (!response.ok) {
-      throw new Error(results.error || 'Failed to fetch user statuses');
+      throw new Error(`HTTP ${response.status}`);
     }
 
-    container.innerHTML = '';
-    
-    if (!results || results.length === 0) {
-      container.innerHTML = '<div class="text-muted">No Telegram users configured</div>';
+    const results = await response.json();
+
+    if (!Array.isArray(results) || results.length === 0) {
+      container.innerHTML = '<div class="text-muted text-center py-2"><i class="bi bi-person-x me-1"></i>No Telegram users</div>';
       return;
     }
     
+    let html = '';
     results.forEach((user) => {
-      const div = document.createElement('div');
-      div.className = 'user-info';
-      div.innerHTML = `
-        <span class="user-name">${user.name}</span>
-        <span class="badge ${user.isPaused ? 'bg-danger' : 'bg-success'} user-status">
-          ${user.isPaused ? 'PAUSED' : 'ACTIVE'}
-        </span>
+      html += `
+        <div class="user-info">
+          <span class="user-name">${user.name || 'Unknown User'}</span>
+          <span class="badge ${user.isPaused ? 'bg-danger' : 'bg-success'} user-status">
+            ${user.isPaused ? 'PAUSED' : 'ACTIVE'}
+          </span>
+        </div>
       `;
-      container.appendChild(div);
     });
+    
+    container.innerHTML = html;
   } catch (err) {
     console.error('Gagal ambil status telegram user:', err);
     const container = document.getElementById('telegram-users');
     if (container) {
-      container.innerHTML = '<div class="text-danger">Failed to load user status</div>';
+      container.innerHTML = '<div class="text-danger text-center py-2"><i class="bi bi-exclamation-triangle me-1"></i>Failed to load</div>';
     }
   }
 }
@@ -862,11 +1001,43 @@ function exportToCSV() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
     
     showAlert('Data berhasil di-export ke CSV', 'success');
   } catch (error) {
     console.error('Error exporting to CSV:', error);
     showAlert('Gagal mengexport data', 'danger');
+  }
+}
+
+/**
+ * Start auto-refresh interval
+ */
+function startAutoRefresh() {
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+  }
+  
+  // Hanya start auto-refresh jika ada data
+  if (allData.length > 0) {
+    refreshInterval = setInterval(() => {
+      if (document.visibilityState === 'visible' && !isFetching) {
+        fetchData();
+      }
+    }, 30000); // 30 detik
+    
+    console.log('🔄 Auto-refresh started (30s interval)');
+  }
+}
+
+/**
+ * Stop auto-refresh interval
+ */
+function stopAutoRefresh() {
+  if (refreshInterval) {
+    clearInterval(refreshInterval);
+    refreshInterval = null;
+    console.log('⏹️ Auto-refresh stopped');
   }
 }
 
@@ -1018,15 +1189,16 @@ function setupEventListeners() {
   // Delete all button
   if (deleteAllBtn) {
     deleteAllBtn.addEventListener('click', async () => {
-      if (!confirm("Yakin ingin menghapus SEMUA data di Firebase? Tindakan ini tidak dapat dibatalkan!")) return;
+      if (!confirm(`Yakin ingin menghapus SEMUA data untuk ${ACTIVE_DEVICE}? Tindakan ini tidak dapat dibatalkan!`)) return;
 
       try {
         showLoading(true);
-        const res = await fetch(`/api/delete-all-data?device=${ACTIVE_DEVICE}`, { 
+        const res = await fetchWithTimeout(`/api/delete-all-data?device=${ACTIVE_DEVICE}`, { 
           method: 'DELETE',
           headers: {
             'Content-Type': 'application/json'
-          }
+          },
+          timeout: 10000
         });
         
         const data = await res.json();
@@ -1035,7 +1207,7 @@ function setupEventListeners() {
           throw new Error(data.error || 'Gagal menghapus data');
         }
 
-        showAlert("✅ Semua data berhasil dihapus. Notifikasi telah dikirim ke Telegram & Discord.", "success");
+        showAlert(`✅ Semua data untuk ${ACTIVE_DEVICE} berhasil dihapus`, "success");
         
         // Reset UI
         allData = [];
@@ -1044,6 +1216,9 @@ function setupEventListeners() {
         updatePagination([]);
         updateChart([]);
         updateSummaryCards();
+        
+        // Stop auto-refresh
+        stopAutoRefresh();
 
       } catch (err) {
         console.error("Error deleting all data:", err);
@@ -1061,27 +1236,28 @@ function setupEventListeners() {
       
       try {
         showLoading(true);
-        const res = await fetch(`/api/set-pause-status`, {
+        const res = await fetchWithTimeout(`/api/set-pause-status`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
             pause: true,
             device: ACTIVE_DEVICE 
-          })
+          }),
+          timeout: 5000
         });
         
         const result = await res.json();
         
         if (result.success) {
-          showAlert(`Data dan notifikasi untuk ${ACTIVE_DEVICE} berhasil dipause`, "success");
+          showAlert(`⏸️ Data dan notifikasi untuk ${ACTIVE_DEVICE} berhasil dipause`, "success");
           await checkPauseStatus();
           updateSummaryCards();
         } else {
-          showAlert(`Gagal mempause ${ACTIVE_DEVICE}: ` + (result.error || "Unknown error"), "danger");
+          showAlert(`❌ Gagal mempause ${ACTIVE_DEVICE}: ${result.error || "Unknown error"}`, "danger");
         }
       } catch (error) {
         console.error("Error:", error);
-        showAlert(`Terjadi kesalahan saat mempause ${ACTIVE_DEVICE}`, "danger");
+        showAlert(`❌ Terjadi kesalahan saat mempause ${ACTIVE_DEVICE}`, "danger");
       } finally {
         showLoading(false);
       }
@@ -1091,11 +1267,9 @@ function setupEventListeners() {
   // Resume button
   if (resumeBtn) {
     resumeBtn.addEventListener("click", async () => {
-      const now = new Date();
-      const lastDataTime = new Date(latestRecord.timestamp || 0);
-      const timeDifference = (now.getTime() - lastDataTime.getTime()) / 1000;
-
-      if (timeDifference > 120) {
+      const isOffline = isDeviceOffline();
+      
+      if (isOffline && filteredData.length > 0) {
         const deviceName = ACTIVE_DEVICE.toUpperCase();
         const offlineMessage = `⚠️ Perintah Gagal: Perangkat ${deviceName} sedang OFFLINE.`;
 
@@ -1106,34 +1280,37 @@ function setupEventListeners() {
         sendTelegramNotification(notificationMessage.replace(/\*\*/g, '<b>'), ACTIVE_DEVICE);
         sendDiscordNotification(notificationMessage, ACTIVE_DEVICE);
         
-        console.warn(offlineMessage);
         return;
       }
 
-      // Resume jika perangkat online
+      // Resume jika perangkat online atau tidak ada data
       try {
         showLoading(true);
-        const res = await fetch(`/api/set-pause-status`, {
+        const res = await fetchWithTimeout(`/api/set-pause-status`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ 
             pause: false,
             device: ACTIVE_DEVICE 
-          })
+          }),
+          timeout: 5000
         });
         
         const result = await res.json();
         
         if (result.success) {
-          showAlert(`Data dan notifikasi untuk ${ACTIVE_DEVICE} berhasil dilanjutkan`, "success");
+          showAlert(`▶️ Data dan notifikasi untuk ${ACTIVE_DEVICE} berhasil dilanjutkan`, "success");
           await checkPauseStatus();
           updateSummaryCards();
+          
+          // Trigger fetch data setelah resume
+          setTimeout(fetchData, 1000);
         } else {
-          showAlert(`Gagal melanjutkan ${ACTIVE_DEVICE}: ` + (result.error || "Unknown error"), "danger");
+          showAlert(`❌ Gagal melanjutkan ${ACTIVE_DEVICE}: ${result.error || "Unknown error"}`, "danger");
         }
       } catch (error) {
         console.error("Error:", error);
-        showAlert(`Terjadi kesalahan saat melanjutkan ${ACTIVE_DEVICE}`, "danger");
+        showAlert(`❌ Terjadi kesalahan saat melanjutkan ${ACTIVE_DEVICE}`, "danger");
       } finally {
         showLoading(false);
       }
@@ -1149,6 +1326,8 @@ function setupEventListeners() {
  * Inisialisasi aplikasi
  */
 function initApp() {
+  console.log('🚀 Initializing Smart Trash Monitoring for', ACTIVE_DEVICE);
+  
   // Set tahun di footer
   if (currentYear) {
     currentYear.textContent = new Date().getFullYear();
@@ -1163,25 +1342,29 @@ function initApp() {
   // Setup event listeners
   setupEventListeners();
   
-  // Load initial data setelah delay kecil
+  // Load initial data
   setTimeout(() => {
     fetchData();
     checkPauseStatus();
     fetchTelegramUserStatuses();
     
-    // Kirim notifikasi aplikasi dibuka
-    const notificationMessage = '🌐 <b>Aplikasi Monitoring Dibuka</b> 🌐\nDashboard monitoring tempat sampah telah diakses';
-    const discordMessage = notificationMessage.replace(/<b>/g, '**').replace(/<\/b>/g, '**');
+    // Kirim notifikasi aplikasi dibuka (hanya untuk admin)
+    const userRole = localStorage.getItem('userRole');
+    const username = localStorage.getItem('username');
     
-    sendTelegramNotification(notificationMessage, ACTIVE_DEVICE);
-    sendDiscordNotification(discordMessage, ACTIVE_DEVICE);
+    if (userRole === 'admin' && username) {
+      const notificationMessage = `🌐 <b>Aplikasi Monitoring Dibuka</b> 🌐\nUser: ${username}\nDevice: ${ACTIVE_DEVICE}\nWaktu: ${new Date().toLocaleString('id-ID')}`;
+      const discordMessage = notificationMessage.replace(/<b>/g, '**').replace(/<\/b>/g, '**');
+      
+      sendTelegramNotification(notificationMessage, ACTIVE_DEVICE);
+      sendDiscordNotification(discordMessage, ACTIVE_DEVICE);
+    }
     
   }, 500);
   
-  // Setup auto-refresh
-  setInterval(fetchData, 30000); // 30 detik
-  setInterval(checkPauseStatus, 10000); // 10 detik
-  setInterval(fetchTelegramUserStatuses, 30000); // 30 detik
+  // Setup interval untuk check pause status dan telegram users
+  setInterval(checkPauseStatus, 15000); // 15 detik
+  setInterval(fetchTelegramUserStatuses, 45000); // 45 detik
 }
 
 // ========================
@@ -1189,7 +1372,11 @@ function initApp() {
 // ========================
 
 // Tunggu DOM siap sepenuhnya
-document.addEventListener('DOMContentLoaded', initApp);
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initApp);
+} else {
+  initApp();
+}
 
 // Handle page visibility untuk optimasi
 document.addEventListener('visibilitychange', () => {
@@ -1197,6 +1384,9 @@ document.addEventListener('visibilitychange', () => {
     // Refresh data saat tab aktif kembali
     fetchData();
     checkPauseStatus();
+  } else {
+    // Stop auto-refresh saat tab tidak aktif
+    stopAutoRefresh();
   }
 });
 
@@ -1210,4 +1400,22 @@ window.addEventListener('error', function(event) {
 window.addEventListener('unhandledrejection', function(event) {
   console.error('Unhandled promise rejection:', event.reason);
   showAlert(`Terjadi kesalahan dalam operasi: ${event.reason}`, 'danger');
+});
+
+// Handle offline/online events
+window.addEventListener('offline', () => {
+  showAlert('⚠️ Anda sedang offline. Beberapa fitur mungkin tidak berfungsi.', 'warning');
+});
+
+window.addEventListener('online', () => {
+  showAlert('✅ Koneksi internet kembali. Memuat data terbaru...', 'success');
+  fetchData();
+});
+
+// Prevent leaving page with unsaved changes (if any)
+window.addEventListener('beforeunload', (event) => {
+  if (isFetching) {
+    event.preventDefault();
+    event.returnValue = 'Data sedang dimuat, yakin ingin meninggalkan halaman?';
+  }
 });
