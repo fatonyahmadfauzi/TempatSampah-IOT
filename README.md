@@ -143,7 +143,7 @@ An IoT-based smart trash monitoring system that tracks the fill level of trash c
                                             | (Read/Write Data)
                                             v
     [Web Browser] <----(HTTPS)----> [Netlify: CDN + Functions] <----(Webhook)---- [Telegram Bot 1 & 2]
-      (API Call)                           ^         |                        (API Reply)
+      (API Call)                            ^         |                        (API Reply)
                                             |         | (API Call)
                                             +---------+------> [Discord]
     ```
